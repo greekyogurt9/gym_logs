@@ -159,6 +159,9 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
 - Metric debate resolved: Epley 1RM and total volume were offered; user kept
   **best top-set weight per session** — most literal reading of "lifting
   higher," no formula to explain. Raw sets stay visible in the table below.
+- Refined: only sets of **8+ reps** qualify for the line and for hitting a
+  target ("120 kg" = 120 for 8). Heavy low-rep sets can't hijack the trend;
+  sessions without a qualifying set are skipped, never zero-filled.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 
@@ -168,11 +171,17 @@ no analytics section — this is a *logging accelerator with a mirror*.
 
 ### 10.1 Metric (one, not three)
 
-Headline metric: **best top-set weight per session** (max `weightKg` logged
-for the exercise that day). It directly answers "lifting higher?" Total
+Headline metric: **best top-set weight per session among sets of 8+ reps**
+(max `weightKg` where `reps >= 8`). The rep floor is the point: heavy
+singles, doubles, and triples don't move the line — only working-range
+strength counts, so the chart answers "lifting higher *for reps*?" Total
 volume per session is computed alongside and shown as a number, not a second
 chart — one line keeps the screen honest and the code small. (A volume
 toggle is a documented follow-up, not v1.)
+
+Sessions with no 8+ set are skipped (no dot, line bridges nothing — gaps
+are honest). Fewer than 2 qualifying sessions: "Log sets of 8+ to draw the
+line." Targets inherit the rule: "120 kg" means 120 *for 8*.
 
 ### 10.2 Chart spec (hand-rolled SVG, zero dependencies)
 
@@ -183,7 +192,8 @@ pure module `lib/progress.ts` holds the math (unit-tested); new presentational
 
 - X = sessions in chronological order (evenly spaced by session index, real
   dates in labels/tooltips — simpler than time-scaling, no distortion lie).
-- Y = best top-set kg, auto-scaled with padding; 3–4 faint gridlines, min/max
+  Sessions without a qualifying (8+) set are omitted, never zero-filled.
+- Y = qualifying best top-set kg, auto-scaled with padding; 3–4 faint gridlines, min/max
   labels only. `viewBox="0 0 600 260"`, width 100% (responsive free).
 - Dots on every session; the latest dot accented.
 - Target overlay (when set): dashed horizontal line at target weight
