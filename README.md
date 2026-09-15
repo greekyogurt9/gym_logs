@@ -2,7 +2,7 @@
 
 A minimal workout logger: Workout → Exercise → Set → Weight × Reps.
 
-Phase 1 done: Next.js scaffold + data-layer contract live in this repo. Full roadmap below.
+V2 complete and live in production (app + cloud sync + phone-tested). Full roadmap below.
 
 ## Project Goal
 
@@ -66,9 +66,9 @@ PostgreSQL (tables + constraints + RLS policies)
 | Concern | Location | Rule |
 |---|---|---|
 | UI rendering, forms, routing | `app/`, `components/` | No SQL, no `supabase.from()` calls here. Call functions from `lib/`. |
-| Business/data logic | `lib/workouts.ts`, `lib/validation.ts`, `lib/types.ts` | Validation (weight > 0, reps > 0, non-empty names), sorting, shaping data. Pure TypeScript, easily unit-tested. |
-| Supabase queries | `lib/supabase/client.ts`, `lib/supabase/queries.ts` (V2) | Only place that imports `@supabase/supabase-js`. Exposes functions like `listWorkouts()`, `createWorkout()`, not raw query builders. |
-| Auth logic (V2) | `lib/supabase/auth.ts`, `middleware.ts`, Supabase Auth | Login, logout, session refresh, protected routes. UI only calls `signInWithGoogle()`, `signOut()`, `getUser()`. |
+| Business/data logic | `lib/validation.ts`, `lib/types.ts`, `lib/migrate.ts` | Validation (weight > 0, reps > 0, non-empty names), sorting, shaping data. Pure TypeScript, easily unit-tested. |
+| Supabase queries | `lib/supabase-repository.ts` (only file that calls `supabase.from()`) | Exposes `createSupabaseRepository(client)` returning the shared interface. Client is injected, never imported. |
+| Auth logic (V2) | `lib/supabase/auth.ts`, `lib/supabase/proxy.ts`, `proxy.ts`, `app/auth/callback/route.ts` | Login, logout, cookie session refresh. UI only calls `signInWithGoogle()`, `signOutUser()`, `getSessionEmail()`. |
 | Env configuration | `.env.local` (local, gitignored), Vercel dashboard (prod), `.env.example` (template) | Code reads `process.env.NEXT_PUBLIC_SUPABASE_URL` etc. Never hardcode URLs or keys. |
 
 ### Key architectural decision: Repository interface
@@ -121,7 +121,7 @@ to build a REST API from scratch. For a 1-hour MVP that is the right trade.
 | Layer | Choice | Purpose |
 |---|---|---|
 | Frontend | Next.js (App Router) + TypeScript | UI, routing, deployment unit |
-| Validation | Zod (or minimal hand-rolled checks in V1) | Single validation schema shared by form + data layer |
+| Validation | Hand-rolled, zero dependencies (`lib/validation.ts`) | Single validator shared by forms, storage writes, and cloud migration |
 | Backend API | Supabase (PostgREST + Auth) | No custom server; DB-backed API |
 | Database | PostgreSQL (via Supabase) | Relational workout data + RLS |
 | Auth (V2) | Supabase Auth, Google OAuth provider | No passwords to store |
@@ -185,8 +185,9 @@ Goal: Google login + personal cloud data. No rewrite.
 Scope:
 
 - Supabase Auth with Google OAuth provider.
-- Protected routes via `middleware.ts` (redirect anonymous away from `/new` only
-  if they opted into cloud; local logging still allowed).
+- Session refresh via `proxy.ts` (Next.js 16 renamed middleware → proxy).
+  No route guards: anonymous users keep full local mode everywhere; signing
+  in switches the device to cloud rows.
 - Supabase repository implementation of the same `WorkoutRepository` interface.
 - RLS policies enforced (see Database Design).
 - Migrate button: "Upload my local workouts to my account".
@@ -353,62 +354,67 @@ validates writes; `auth.uid()` comes from the verified JWT, not from client inpu
 
 ## Authentication Strategy
 
-V1: architected for, not implemented. No login screen, no session code in V1.
-But types, repository interface, and `user_id` columns already assume "one user
-owns many rows", so V2 slots in.
+As built (V2 live):
 
-V2 (planned):
-
-1. Enable Google provider in Supabase dashboard (authorized redirect URLs:
-   `http://localhost:3000/auth/callback` + production URL).
-2. `@supabase/ssr` for cookie-based sessions. Client Component for the
-   "Sign in with Google" button → `supabase.auth.signInWithOAuth({ provider: 'google' })`.
-3. `app/auth/callback/route.ts` exchanges code for session, sets cookies.
-4. `middleware.ts` refreshes the session on every request and optionally guards
-   `/new` for users who chose cloud-only mode.
-5. `profiles` row auto-created by a `handle_new_user()` trigger on
-   `auth.users` insert (standard Supabase pattern).
-6. All data queries use the anon key + user JWT. RLS does the isolation.
-   `service_role` is never used by the app.
+1. Google provider enabled in the Supabase dashboard; the provider's callback
+   URL is copied FROM Supabase (source of truth), registered in the Google
+   Cloud OAuth client alongside localhost for dev.
+2. `@supabase/ssr` for cookie-based sessions. Header `AuthButton` (Client
+   Component) → `signInWithOAuth({ provider: 'google' })`.
+3. `app/auth/callback/route.ts` exchanges the code for a session, sets cookies.
+4. `proxy.ts` (Next.js 16; formerly `middleware.ts`) refreshes the session on
+   every request via `supabase.auth.getUser()` and skips entirely when cloud
+   env vars are absent — zero-config V1 keeps working.
+5. `profiles` row auto-created by the `handle_new_user()` trigger.
+6. Supabase **Site URL + Redirect URLs allowlist must include the production
+   origin** — lesson learned the hard way: with Site URL left as localhost,
+   phone sign-ins bounced to the phone itself ("refused to connect").
+7. All data queries use the publishable/anon key + user JWT. RLS does the
+   isolation. `service_role` is never used by the app.
 
 What you should understand: OAuth flow (redirect → provider → callback → cookie),
-why the anon key is safe to expose but `service_role` is not, and why session
-refresh belongs in middleware rather than in every page.
+why the client key is safe to expose but `service_role` is not, why session
+refresh belongs in the proxy rather than in every page, and why `getUser()`
+(not the cached session) is the trustworthy check in server code.
 
 ## Local vs Cloud Data Strategy
 
-Intended V2 migration (designed now, built later):
+As built (`lib/migrate.ts`, Phase 9 — explicit "Upload to my account" banner
+shown to signed-in users who still have local workouts):
 
 ```text
 V1: localStorage only (key: "my-gym-buddy:workouts:v1")
          |
          v (user clicks "Sign in with Google")
-Authenticated, empty cloud account
+Authenticated, empty cloud account (local rows untouched)
          |
          v (user clicks "Upload my local workouts")
-For each local workout (oldest first):
-  insert workout -> insert exercises (upsert by name)
+For each local workout, oldest first:
+  skip if (title + startedAt) already in cloud (retry-safe, no duplicates)
+  insert workout -> upsert exercises by name
   -> insert workout_exercises -> insert sets
+  -> READ BACK from cloud and compare (title, exercise + set counts)
+First failure stops the run; local data untouched; message says how far it got.
+         |
+         v (only after every write verifies)
+Raw local payload copied to "...:backup:<timestamp>", live key cleared.
+Backup is never auto-deleted.
          |
          v
-Cloud is now source of truth on this device.
-Local key kept as backup ("...:backup:<timestamp>"), then cleared.
+Cloud is now source of truth on this device while signed in.
 ```
 
-Rules to avoid a rewrite:
+Rules that survived contact with reality:
 
 - Local and cloud share the same TypeScript types (`lib/types.ts`).
 - IDs are UUIDs in both stores, so inserts don't collide.
 - `started_at` is the ordering key, not auto-increment IDs.
-- Migration is explicit (button), not automatic — no surprise overwrites,
-  no conflict resolution needed in V2.
-- After migration, the Supabase repository is the default; local becomes
-  read-only backup until user confirms.
-
-Edge cases V2 must handle (not V1): user signs in on a second device (cloud wins),
-user edits local data after uploading (warn before re-upload), upload partially
-fails (stop, report count, keep local intact — never delete local until cloud
-read-back succeeds).
+- Migration is explicit (button), not automatic.
+- Signed-out devices always show local data; the factory falls back on any
+  session problem, so losing login never bricks the logger.
+- Known limits (accepted): no true identity per workout (skip-match is
+  best-effort), no multi-device merge — second device's cloud rows simply win
+  by being the only ones shown when signed in.
 
 ## Security
 
@@ -482,12 +488,13 @@ Local dev -> Git -> GitHub (main) -> Vercel build -> Production
                                     -> Supabase (prod project, migrations applied)
 ```
 
-- Vercel project is connected to `greekyogurt9/gym_logs`, root = repo root,
+- Vercel project `my_gym_buddy` is connected to `greekyogurt9/gym_logs`, root = repo root,
   framework preset = Next.js, branch = `main`.
 - Every push to `main` → production deploy. Every PR → preview URL for review.
-- Supabase has exactly one remote project (prod). Schema changes reach it via
-  `supabase db push` (or `supabase link` + `supabase migration up`) from a clean
-  local migration — never by clicking in the prod dashboard.
+- Supabase has one dedicated remote project (prod; an older archive project is
+  untouched). Schema changes reach it via `supabase db push` from a clean local
+  migration — never by clicking in the prod dashboard. Remote verified after
+  push: 5 tables + 19 policies + RLS on (Phase 8).
 - Rollback: `git revert` + redeploy on Vercel; DB rollback = new down-migration,
   never `db reset` on prod.
 
@@ -495,14 +502,42 @@ Prod vs dev config:
 
 | | Local dev | Production (Vercel) |
 |---|---|---|
-| URL | `http://localhost:3000` | `https://<app>.vercel.app` |
-| Supabase URL/key | `.env.local` (gitignored) | Vercel → Settings → Environment Variables |
-| OAuth redirect | `http://localhost:3000/auth/callback` | `https://<app>.vercel.app/auth/callback` |
+| URL | `http://localhost:3000` | `https://mygymbuddy-eight.vercel.app` |
+| Supabase URL/key | `.env.local` (gitignored) | Vercel → Settings → Environment Variables (Sensitive ON) |
+| Supabase Site URL + redirect allowlist | `http://localhost:3000/**` | must include `https://mygymbuddy-eight.vercel.app/**` or phone sign-in bounces to localhost |
+| OAuth redirect | `http://localhost:3000/auth/callback` | prod URL + `/auth/callback` (via Supabase Site URL) |
 | Debug | console + React devtools | Vercel logs + Supabase logs; no `console.log(secrets)` |
 
-Deployment checklist (Phase 7): `npm run build` passes locally → env vars set in
-Vercel → `main` deployed → open prod URL → create/view/delete one workout →
-check Vercel + Supabase logs for errors.
+Deployment checklist (done, kept as the repeatable gate): `npm run build` passes
+locally → env vars set in Vercel → `main` deployed → open prod URL → sign in,
+create/view/delete one workout → check Table Editor row appears → check Vercel +
+Supabase logs for errors.
+
+## Distribution Strategy
+
+Decision (taken after V2): **send-link installation first, Play Store optional.**
+The app needs no native APIs, so the website IS the app.
+
+How "send link" works: the user opens the production URL on their phone →
+Android Chrome menu → Add to Home screen (iOS: Share → Add to Home Screen).
+With Phase 10's manifest + icons + service worker it launches fullscreen,
+offline-capable, with its own icon — $0, no review, no account.
+
+Why not the alternatives (for this app):
+
+- Hand-rolled WebView wrapper: Play's policy frowns on "a website in a box"
+  unless it's a verified TWA. Rejected path.
+- React Native/Expo rewrite: real native, but rebuilds the whole UI. The
+  Supabase backend (schema + RLS + Auth) would carry over untouched — a
+  fallback if the PWA ever hits a wall, not a first move.
+
+Play Store (Phase 11, optional, ~$25 one-time Console fee — not free, not
+yearly): PWA → Bubblewrap/PWABuilder generates a TWA `.aab` → store listing
+(icon, screenshots, description, `/privacy` page from Phase 10, data-safety
+form declaring Google email + workout data) → internal-testing track → review
+→ production. Updates then have two layers: web changes go live instantly via
+`git push` (no review); wrapper changes (icon, version) upload a new `.aab`
+for short review.
 
 ## Environment Variables
 
@@ -524,25 +559,28 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Rules: code fails fast with a clear message if a required var is missing
-(`Missing NEXT_PUBLIC_SUPABASE_URL — copy .env.example to .env.local`);
-V1 runs without any vars (localStorage mode); Vercel vars are set per
-environment (Production vs Preview) in the dashboard, never in Git.
+Rules: `requireSupabaseEnv()` throws a directions-pointing error when cloud code
+runs unconfigured — but the app itself degrades gracefully: no env vars means
+localStorage mode, and a broken session falls back to local rather than
+crashing. Vercel vars are set per environment (Production vs Preview) in the
+dashboard, never in Git.
 
 ## Testing Strategy
 
 Keep it proportional to a 1-hour MVP. Three layers, lightest first:
 
 1. **Type safety (always).** `npx tsc --noEmit` in every phase. Catches most
-   V1 bugs (wrong field names, null handling) for free.
-2. **Unit tests (V1).** Vitest, only for pure logic: `lib/validation.ts`
-   (reject weight 0, reps 0, empty names), set ordering, total-volume math.
-   Goal: ~10 fast tests, run with `npm test`. No component tests in V1.
-3. **Manual smoke list (V1 deploy gate).** Create workout → reload → history shows
+   bugs (wrong field names, null handling) for free — including a real one in
+   Phase 3 where a test passed invalid data to an honestly-typed boundary.
+2. **Unit tests.** Vitest, now 36 tests + 2 live integration tests (`npm test`,
+   <1s hermetic): validation, repository behavior, date helpers, env branching,
+   migration engine against fakes.
+3. **Manual smoke list (every deploy gate).** Create workout → reload → history shows
    it → open detail → delete → confirm gone. Run against local + prod URL.
-4. **Later (V2+).** RLS tests in SQL (user A cannot select user B's workouts),
-   one Playwright happy-path test (new → history → detail), Vercel preview
-   checks on every PR.
+4. **Authorization tests (done, Phase 2 + 8).** Raw-SQL RLS checks with two
+   simulated users, plus end-to-end through the real repository with two
+   genuinely signed-in users on the local stack. (Playwright E2E: still
+   future work, not yet needed.)
 
 What you should understand: tests are cheapest at the pure-function level;
 DB authorization needs its own tests because UI tests can't see RLS bypasses;
@@ -563,7 +601,8 @@ a short manual checklist beats a flaky E2E suite for V1.
 5. **Row Level Security** — `ENABLE RLS`, `USING` vs `WITH CHECK`, `auth.uid()`,
    join-based child policies, verifying isolation with two test users.
 6. **Authentication architecture** — Google OAuth code exchange, cookie sessions,
-   `middleware.ts` refresh, why auth is designed in V1 (types + `user_id`) but
+   `proxy.ts` refresh (Next.js 16 renamed middleware → proxy), Site URL +
+   redirect-allowlist config, why auth is designed in V1 (types + `user_id`) but
    implemented in V2.
 7. **Environment variables** — `NEXT_PUBLIC_*` vs server-only, `.env.local` vs
    `.env.example` vs Vercel dashboard, fail-fast on missing config.
@@ -586,7 +625,6 @@ Only after V1–V3 are stable and used:
 - Metric/imperial toggle (kg/lb) with stored canonical unit.
 - Rest timer, RPE field per set.
 - CSV export of history.
-- Simple PWA installability for gym use.
 - Seed library of common exercises (still per-user rows, just pre-inserted).
 
 Each needs its own migration + validation update + smoke test. No silent schema edits.
@@ -613,15 +651,18 @@ it is out of scope until V3 is done.
   migration with 5 tables + constraints + RLS policies + `handle_new_user` trigger,
   `supabase db reset` passes locally.
 - [x] **Phase 3 — Backend/data layer (V1)** — `lib/validation.ts` (hand-rolled, zero deps),
-  `LocalStorageRepository` implementing the interface, Vitest unit tests (20 passing), `tsc` clean.
+  `LocalStorageRepository` implementing the interface, Vitest unit tests, `tsc` clean.
+  (Suite has since grown to 36 unit + 2 live integration tests.)
 - [x] **Phase 4 — Minimal UI (V1)** — `/`, `/new`, `/workouts/[id]`, create/list/detail/delete,
   validation messages, empty states. Route smoke passes (`tsc` + `lint` clean).
-- [x] **Phase 5 — Testing (V1 gate)** — 26 unit tests passing + `npm run build` +
+- [x] **Phase 5 — Testing (V1 gate)** — unit tests passing + `npm run build` +
   prod-mode (`next start`) route smoke. Accepted cuts documented in chat; no new features.
+  (Suite has since grown; see Testing Strategy.)
 - [x] **Phase 6 — GitHub (V1)** — repo initialized locally on `main`, first clean commit
   (secret-checked), pushed to `greekyogurt9/gym_logs`. Branch protection: enable in GitHub UI.
-- [x] **Phase 7 — Vercel deployment (V1 live)** — deployed via CLI (`vercel --prod`),
-  no env vars required for V1 local mode, prod smoke list passes.
+- [x] **Phase 7 — Vercel deployment (V1 live)** — deployed via CLI, then Git-connected
+  (push to `main` auto-deploys, PRs get preview URLs). Cloud env vars added in Phase 8
+  + redeploy → production runs full cloud mode, phone-tested.
   Production URL: https://mygymbuddy-eight.vercel.app
 - [x] **Phase 8 — Authentication (V2)** — Google provider docs + callback route + proxy
   session refresh, `SupabaseRepository`, sign in/out UI, RLS verified with two users
@@ -630,12 +671,40 @@ it is out of scope until V3 is done.
 - [x] **Phase 9 — Local/cloud sync (V2)** — explicit migrate button (oldest-first,
   skips already-present, read-back verified per workout), timestamped local backup
   retained, live key cleared only after verification. Unit + live integration tests.
+- [ ] **Phase 10 — Installable PWA, send-link distribution (next)** — no store,
+  no rewrite. Concrete steps:
+  1. `app/manifest.ts` (Next.js metadata API): name, short_name, start_url `/`,
+     display `standalone`, theme/background colors, icons (512 + 192 + maskable).
+  2. Generate icons once (e.g. one 1024px source → script or PWA asset generator),
+     commit under `public/icons/`. No designer needed for V1 of the icon.
+  3. Minimal service worker: precache app shell (`/`, `/new`, CSS), runtime-cache
+     navigations, offline fallback page. Verify: airplane mode → installed app
+     still opens history and the new-workout form.
+  4. `<meta name="theme-color">` + Apple touch icon for iOS Add-to-Home-Screen.
+  5. `/privacy` page (plain text: what data, where it lives, contact) — required
+     later for any store listing, useful now for trust.
+  6. Lighthouse PWA audit green; test install from the production URL on Android
+     Chrome (Add to Home screen) and iOS Safari (Share → Add).
+  Done = installable from the link, usable in a gym basement, privacy page live.
+- [ ] **Phase 11 — Play Store via TWA (optional, later)** — only if strangers need
+  to discover the app. Concrete steps:
+  1. PWABuilder.com (no local Android setup): enter production URL → validate
+     PWA score → download Android package (TWA, `.aab`).
+  2. Play Console account ($25 one-time) → create app → store listing (name,
+     description, screenshots from a real phone, icon, feature graphic).
+  3. Upload `.aab` to the **internal testing** track first; install on your own
+     phone via the test link and smoke-test sign-in + save.
+  4. Content rating questionnaire + data-safety form (declare: Google email,
+     app activity/workout data, stored in Supabase).
+  5. Promote to production → review (typically days) → listed.
+  Done = searchable on Play, installed app updates itself on every `git push`.
 
 Phases 0–7 = V1 (usable, deployable, no login).
-Phases 8–9 = V2 (accounts + personal cloud data).
-V3 features (PRs, graphs, repeat-workout) start only after Phase 9 is live and smoke-tested.
+Phases 8–9 = V2 (accounts + personal cloud data, live in production).
+Phase 10 = distribution without a store. Phase 11 = store presence (optional).
+V3 progress-tracking features stay parked until real usage demands them.
 
 ---
 
-_V2 complete (Phases 8–9): accounts, cloud data, and local→cloud migration are live.
-V3 ideas stay parked until real usage demands them._
+_V2 complete and phone-verified in production. Next up: Phase 10 (installable PWA,
+send-link distribution) — say "PWA-ify it" to begin. V3 ideas stay parked._
