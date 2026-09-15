@@ -2,9 +2,10 @@
 
 Status: **proposed, not approved, not built.** No code changes accompany this
 document. When a slice is approved, implementation follows the phasing in
-§7 and this header is updated.
+§7 and §10, and this header is updated.
 
-Date: September 2026. Reference apps: Hevy (4.9★, 15M+ users), Strong.
+Date: September 2026 (extended: progress charts + per-exercise targets).
+Reference apps: Hevy (4.9★, 15M+ users), Strong.
 UX sources: thumb-zone research (~70% one-handed mobile use), fitness-UX
 progressive-disclosure practice.
 
@@ -151,4 +152,85 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
 ## 9. Decision log
 
 - Plan presented in chat; user chose: save plan to `UI.md` (this file).
-- Awaiting: approval of scope/phasing, and which slice (if any) to build.
+- User added: visual "am I lifting higher" charts + per-exercise targets
+  (e.g. 120 kg barbell squat by Dec '26, with a dot showing how far away).
+  Planned below as §10 (V3-A). Awaiting: approval of scope/phasing, and which
+  slice (if any) to build.
+
+## 10. V3-A — Progress charts + targets ("am I lifting higher?")
+
+Goal: one screen per exercise that answers the lifter's core question at a
+glance, plus an optional target with a visible gap. Still no dashboards,
+no analytics section — this is a *logging accelerator with a mirror*.
+
+### 10.1 Metric (one, not three)
+
+Headline metric: **best top-set weight per session** (max `weightKg` logged
+for the exercise that day). It directly answers "lifting higher?" Total
+volume per session is computed alongside and shown as a number, not a second
+chart — one line keeps the screen honest and the code small. (A volume
+toggle is a documented follow-up, not v1.)
+
+### 10.2 Chart spec (hand-rolled SVG, zero dependencies)
+
+No chart library: one line-chart with dots + target overlay is ~100 lines of
+SVG and avoids a dependency with more API surface than our whole app. New
+pure module `lib/progress.ts` holds the math (unit-tested); new presentational
+`components/progress-chart.tsx` renders it:
+
+- X = sessions in chronological order (evenly spaced by session index, real
+  dates in labels/tooltips — simpler than time-scaling, no distortion lie).
+- Y = best top-set kg, auto-scaled with padding; 3–4 faint gridlines, min/max
+  labels only. `viewBox="0 0 600 260"`, width 100% (responsive free).
+- Dots on every session; the latest dot accented.
+- Target overlay (when set): dashed horizontal line at target weight
+  (y-scale extends to include it), a marker dot positioned by target date,
+  label `120 kg · Dec ’26`, and a delta chip: **`8 kg to go`** (or `Hit it 🎉`
+  when current best ≥ target, or `Overdue — adjust?` past the date).
+- Fewer than 2 sessions: no line yet — show the dots plus
+  "Log once more to see your line."
+- Table fallback under the chart (date, best, volume): readable, testable,
+  and the honest accessible version of the same data.
+- Dark-first colors from §5 tokens; tabular numerals.
+
+### 10.3 Target model (one active target per exercise)
+
+```ts
+type Target = { exerciseName: string; targetWeightKg: number; targetDate: string /* YYYY-MM-DD */ };
+```
+
+- New `public.targets` table via migration (the project's *second*
+  migration — same workflow as Phase 2): `id`, `user_id → auth.users`
+  cascade, `exercise_id → exercises` cascade, `target_weight_kg numeric(6,1)`
+  with the standard weight CHECK, `target_date date`, `UNIQUE(user_id,
+  exercise_id)`, RLS `auth.uid() = user_id` on all four operations (direct
+  ownership, like `exercises`).
+- Local twin: new localStorage key, same shape, same interface.
+- Interface additions (both repos implement):
+  `getExerciseHistory(name) → { date, bestWeightKg, totalVolumeKg }[]`,
+  `getTarget(name)`, `setTarget(...)`. Weight/date rules reuse
+  `lib/validation.ts` limits; past dates allowed (shows the overdue state).
+- UI: target card on the exercise screen — shows target + gap, or a
+  "Set target" button opening weight + date inputs (prefilled on edit),
+  plus a quiet delete. No target history/archive in v1.
+
+### 10.4 Screen + entry points
+
+New route `/exercises/[name]`: chart → stats row (current best · sessions
+logged · last session) → target card → session table. Entry: exercise names
+become tappable links on the detail page (needs UI-A's detail upgrade —
+**dependency: build UI-A first**). No new tab; progress stays one tap from
+data you already look at.
+
+### 10.5 Build order inside V3-A
+
+1. Data: interface additions → both repositories → migration + RLS →
+   unit tests (aggregation math, target validation) + live integration test
+   (two-user pattern from Phase 8).
+2. Presentation: `lib/progress.ts` chart math (tested) → `progress-chart.tsx`
+   → exercise screen → target card/form → tappable entry points.
+3. Gate: suite + `tsc` + `lint` + `build` + prod smoke (chart renders with
+   real cloud data on the phone).
+
+Out: estimated-1RM line, volume toggle, PR badges, charts anywhere else,
+notifications/reminders about targets.
