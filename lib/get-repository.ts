@@ -24,6 +24,18 @@ export { isCloudConfigured };
 
 let localInstance: WorkoutRepository | null = null;
 
+/**
+ * Direct access to the local repository. Reserved for the Phase 9
+ * migration, which inherently needs BOTH backends at once (source: local,
+ * target: cloud). Regular pages must keep using getWorkoutRepository().
+ */
+export function getLocalRepository(): WorkoutRepository {
+  if (!localInstance) {
+    localInstance = createLocalStorageRepository();
+  }
+  return localInstance;
+}
+
 export async function getWorkoutRepository(): Promise<WorkoutRepository> {
   if (isCloudConfigured()) {
     try {
@@ -36,8 +48,5 @@ export async function getWorkoutRepository(): Promise<WorkoutRepository> {
       // Fall through to local (see comment above).
     }
   }
-  if (!localInstance) {
-    localInstance = createLocalStorageRepository();
-  }
-  return localInstance;
+  return getLocalRepository();
 }

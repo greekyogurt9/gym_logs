@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import MigrateBanner from "@/components/migrate-banner";
 import { formatWorkoutDate } from "@/lib/format";
-import { getWorkoutRepository } from "@/lib/get-repository";
+import { getWorkoutRepository, isCloudConfigured } from "@/lib/get-repository";
+import { getSessionEmail, subscribeToAuthEvents } from "@/lib/supabase/auth";
 import type { Workout } from "@/lib/types";
 
 // History list. Client-rendered because V1 storage is localStorage, which
@@ -17,6 +19,10 @@ export default function HistoryPage() {
   const [error, setError] = useState("");
   // Bumped by Retry to re-run the fetch effect below.
   const [reloadToken, setReloadToken] = useState(0);
+  // Signed-in email (null when local mode). Drives the migrate banner and
+  // refreshes this page's data on sign in/out — in place, so /new drafts
+  // elsewhere are never disturbed.
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Fetch-on-mount (+ on retry). State updates happen only in async
   // callbacks with a cancellation guard — never synchronously in the
@@ -40,6 +46,26 @@ export default function HistoryPage() {
     };
   }, [reloadToken]);
 
+  useEffect(() => {
+    if (!isCloudConfigured()) return;
+    let active = true;
+    getSessionEmail().then((email) => {
+      if (active) setUserEmail(email);
+    });
+    const unsubscribe = subscribeToAuthEvents((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        setReloadToken((t) => t + 1);
+        getSessionEmail().then((email) => {
+          if (active) setUserEmail(email);
+        });
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   return (
     <div>
       <div className="page-head">
@@ -48,6 +74,10 @@ export default function HistoryPage() {
           New workout
         </Link>
       </div>
+
+      {userEmail && (
+        <MigrateBanner key={userEmail} onMigrated={() => setReloadToken((t) => t + 1)} />
+      )}
 
       {status === "loading" && <p className="muted">Loading…</p>}
 

@@ -29,14 +29,22 @@ export interface KeyValueStorage {
   removeItem(key: string): void;
 }
 
-function resolveStorage(explicit?: KeyValueStorage): KeyValueStorage {
-  if (explicit) return explicit;
+/**
+ * Browser localStorage as a KeyValueStorage. Exported (rather than buried
+ * inside the repository) so the Phase 9 migration can back up and clear the
+ * same store — pages still never touch window.localStorage directly.
+ */
+export function browserStorage(): KeyValueStorage {
   if (typeof window !== "undefined" && window.localStorage) {
     return window.localStorage;
   }
   throw new Error(
     "localStorage is not available (server-side render?). Pass a storage explicitly.",
   );
+}
+
+function resolveStorage(explicit?: KeyValueStorage): KeyValueStorage {
+  return explicit ?? browserStorage();
 }
 
 function newId(): string {

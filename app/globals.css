@@ -276,6 +276,17 @@ h2 {
   align-items: flex-start;
 }
 
+.success-box {
+  border: 1px solid #1b7f3b;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.card.migrate {
+  border-style: dashed;
+}
+
 .empty {
   margin: 2rem 0;
   display: flex;

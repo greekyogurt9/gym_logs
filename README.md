@@ -627,8 +627,9 @@ it is out of scope until V3 is done.
   session refresh, `SupabaseRepository`, sign in/out UI, RLS verified with two users
   (live integration test on local stack). Remote project linked, migration pushed
   and verified (5 tables + 19 policies + RLS on).
-- [ ] **Phase 9 — Local/cloud sync (V2)** — migrate button (local → cloud with read-back
-  verification), cloud-as-default after migration, backup key retained.
+- [x] **Phase 9 — Local/cloud sync (V2)** — explicit migrate button (oldest-first,
+  skips already-present, read-back verified per workout), timestamped local backup
+  retained, live key cleared only after verification. Unit + live integration tests.
 
 Phases 0–7 = V1 (usable, deployable, no login).
 Phases 8–9 = V2 (accounts + personal cloud data).
@@ -636,4 +637,5 @@ V3 features (PRs, graphs, repeat-workout) start only after Phase 9 is live and s
 
 ---
 
-_Phase 8 code complete. Next action: finish the 4-item cloud checklist in chat, then say "proceed to Phase 9" for local→cloud migration._
+_V2 complete (Phases 8–9): accounts, cloud data, and local→cloud migration are live.
+V3 ideas stay parked until real usage demands them._
