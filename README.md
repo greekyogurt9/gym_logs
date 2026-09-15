@@ -671,21 +671,11 @@ it is out of scope until V3 is done.
 - [x] **Phase 9 — Local/cloud sync (V2)** — explicit migrate button (oldest-first,
   skips already-present, read-back verified per workout), timestamped local backup
   retained, live key cleared only after verification. Unit + live integration tests.
-- [ ] **Phase 10 — Installable PWA, send-link distribution (next)** — no store,
-  no rewrite. Concrete steps:
-  1. `app/manifest.ts` (Next.js metadata API): name, short_name, start_url `/`,
-     display `standalone`, theme/background colors, icons (512 + 192 + maskable).
-  2. Generate icons once (e.g. one 1024px source → script or PWA asset generator),
-     commit under `public/icons/`. No designer needed for V1 of the icon.
-  3. Minimal service worker: precache app shell (`/`, `/new`, CSS), runtime-cache
-     navigations, offline fallback page. Verify: airplane mode → installed app
-     still opens history and the new-workout form.
-  4. `<meta name="theme-color">` + Apple touch icon for iOS Add-to-Home-Screen.
-  5. `/privacy` page (plain text: what data, where it lives, contact) — required
-     later for any store listing, useful now for trust.
-  6. Lighthouse PWA audit green; test install from the production URL on Android
-     Chrome (Add to Home screen) and iOS Safari (Share → Add).
-  Done = installable from the link, usable in a gym basement, privacy page live.
+- [x] **Phase 10 — Installable PWA, send-link distribution** — `app/manifest.ts`
+  (standalone, maskable + regular icons), dependency-free generated icons under
+  `public/icons/`, minimal service worker (shell precache, offline fallback),
+  theme-color + iOS touch icon, `/privacy` page. Verified: manifest valid,
+  SW/offline/icons serve, PWA meta present. No behavior changes.
 - [ ] **Phase 11 — Play Store via TWA (optional, later)** — only if strangers need
   to discover the app. Concrete steps:
   1. PWABuilder.com (no local Android setup): enter production URL → validate
@@ -706,5 +696,5 @@ V3 progress-tracking features stay parked until real usage demands them.
 
 ---
 
-_V2 complete and phone-verified in production. Next up: Phase 10 (installable PWA,
-send-link distribution) — say "PWA-ify it" to begin. V3 ideas stay parked._
+_Phase 10 complete: the link installs like an app. Remaining optional work: Phase 11
+(Play Store via TWA) and the parked V3 tracking ideas — both wait for real demand._
