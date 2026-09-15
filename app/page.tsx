@@ -24,7 +24,7 @@ export default function HistoryPage() {
   useEffect(() => {
     let active = true;
     getWorkoutRepository()
-      .listWorkouts()
+      .then((repo) => repo.listWorkouts())
       .then((rows) => {
         if (!active) return;
         setWorkouts(rows);

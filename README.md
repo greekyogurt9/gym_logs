@@ -424,8 +424,9 @@ Rules:
 - `.env`, `.env.local`, `.env.production`, `*.pem`, `credentials.json`,
   `service_role.json` are gitignored from Phase 0. Check `git status` + `git diff`
   before every commit.
-- Frontend may only use `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-  The anon key is designed to be public *when RLS is on* — it is still a secret
+- Frontend may only use `NEXT_PUBLIC_SUPABASE_URL` + one client key
+  (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, or legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+  The client key is designed to be public *when RLS is on* — it is still a secret
   in the sense that you never commit it; it lives in `.env.local` + Vercel env vars.
 - `service_role` key: server/emergency use only, never in `NEXT_PUBLIC_*`,
   never in client components, never in Git.
@@ -508,7 +509,8 @@ check Vercel + Supabase logs for errors.
 | Name | Scope | Required in | Purpose |
 |---|---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | public (safe for browser) | V2+ | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public *only with RLS on* | V2+ | Client key, governed by RLS |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public *only with RLS on* (preferred) | V2+ | Client key, governed by RLS |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public *only with RLS on* (legacy fallback) | V2+ | Same role as above; either key works |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only — NEVER `NEXT_PUBLIC_*`, never commit | emergency scripts only | Bypasses RLS; not used by the app |
 | `NEXT_PUBLIC_APP_URL` | public | V2+ | Canonical URL for OAuth redirects |
 
@@ -517,7 +519,8 @@ check Vercel + Supabase logs for errors.
 ```bash
 # Copy to .env.local and fill in. Never commit .env.local.
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
@@ -620,8 +623,9 @@ it is out of scope until V3 is done.
 - [x] **Phase 7 — Vercel deployment (V1 live)** — deployed via CLI (`vercel --prod`),
   no env vars required for V1 local mode, prod smoke list passes.
   Production URL: https://mygymbuddy-eight.vercel.app
-- [ ] **Phase 8 — Authentication (V2)** — Google provider, callback route, middleware,
-  `SupabaseRepository`, RLS verified with two users, sign in/out UI.
+- [x] **Phase 8 — Authentication (V2)** — Google provider docs + callback route + proxy
+  session refresh, `SupabaseRepository`, sign in/out UI, RLS verified with two users
+  (live integration test on local stack). Remote link + `db push` = your checklist below.
 - [ ] **Phase 9 — Local/cloud sync (V2)** — migrate button (local → cloud with read-back
   verification), cloud-as-default after migration, backup key retained.
 
@@ -631,4 +635,4 @@ V3 features (PRs, graphs, repeat-workout) start only after Phase 9 is live and s
 
 ---
 
-_Phase 7 complete — V1 is live. Next action: say "proceed to Phase 8" for Google auth + cloud data (V2)._
+_Phase 8 code complete. Next action: finish the 4-item cloud checklist in chat, then say "proceed to Phase 9" for local→cloud migration._

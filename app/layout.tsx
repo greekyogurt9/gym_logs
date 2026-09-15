@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import AuthButton from "@/components/auth-button";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,9 +27,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Link className="brand" href="/">
             My Gym Buddy
           </Link>
-          <Link className="button-secondary" href="/new">
-            + New
-          </Link>
+          <nav className="site-nav">
+            <AuthButton />
+            <Link className="button-secondary" href="/new">
+              + New
+            </Link>
+          </nav>
         </header>
         <main className="container">{children}</main>
       </body>

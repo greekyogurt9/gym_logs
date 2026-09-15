@@ -24,7 +24,7 @@ export default function WorkoutDetailPage() {
 
   useEffect(() => {
     getWorkoutRepository()
-      .getWorkout(id)
+      .then((repo) => repo.getWorkout(id))
       .then((row) => {
         if (!row) {
           setStatus("not-found");
@@ -44,7 +44,8 @@ export default function WorkoutDetailPage() {
     setDeleting(true);
     setError("");
     try {
-      await getWorkoutRepository().deleteWorkout(id);
+      const repo = await getWorkoutRepository();
+      await repo.deleteWorkout(id);
       router.push("/");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not delete this workout.");

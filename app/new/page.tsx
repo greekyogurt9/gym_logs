@@ -58,7 +58,8 @@ export default function NewWorkoutPage() {
     setFieldErrors({});
     setFormError("");
     try {
-      await getWorkoutRepository().createWorkout({
+      const repo = await getWorkoutRepository();
+      await repo.createWorkout({
         title,
         startedAt: dateInputToIso(date),
         exercises: exercises.map((ex) => ({

@@ -73,6 +73,27 @@ a {
   font-size: 1.1rem;
 }
 
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.auth-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+button.small,
+a.small {
+  padding: 0.4rem 0.7rem;
+}
+
 .page-head {
   display: flex;
   align-items: center;
