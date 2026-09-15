@@ -156,6 +156,9 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
   (e.g. 120 kg barbell squat by Dec '26, with a dot showing how far away).
   Planned below as §10 (V3-A). Awaiting: approval of scope/phasing, and which
   slice (if any) to build.
+- Metric debate resolved: Epley 1RM and total volume were offered; user kept
+  **best top-set weight per session** — most literal reading of "lifting
+  higher," no formula to explain. Raw sets stay visible in the table below.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 
