@@ -515,29 +515,24 @@ Supabase logs for errors.
 
 ## Distribution Strategy
 
-Decision (taken after V2): **send-link installation first, Play Store optional.**
-The app needs no native APIs, so the website IS the app.
+Decision: **send-link installation. No store listing.** The app needs no
+native APIs, so the website IS the app.
 
-How "send link" works: the user opens the production URL on their phone →
-Android Chrome menu → Add to Home screen (iOS: Share → Add to Home Screen).
-With Phase 10's manifest + icons + service worker it launches fullscreen,
-offline-capable, with its own icon — $0, no review, no account.
+How it works: the user opens the production URL on their phone → Android
+Chrome menu → Add to Home screen (iOS: Share → Add to Home Screen). With the
+manifest + icons + service worker it launches fullscreen, offline-capable,
+with its own icon — $0, no review, no account, updates on every `git push`.
 
-Why not the alternatives (for this app):
+Why not a native wrapper or rewrite (evaluated, rejected for this app):
 
 - Hand-rolled WebView wrapper: Play's policy frowns on "a website in a box"
   unless it's a verified TWA. Rejected path.
 - React Native/Expo rewrite: real native, but rebuilds the whole UI. The
   Supabase backend (schema + RLS + Auth) would carry over untouched — a
   fallback if the PWA ever hits a wall, not a first move.
-
-Play Store (Phase 11, optional, ~$25 one-time Console fee — not free, not
-yearly): PWA → Bubblewrap/PWABuilder generates a TWA `.aab` → store listing
-(icon, screenshots, description, `/privacy` page from Phase 10, data-safety
-form declaring Google email + workout data) → internal-testing track → review
-→ production. Updates then have two layers: web changes go live instantly via
-`git push` (no review); wrapper changes (icon, version) upload a new `.aab`
-for short review.
+- Play Store listing: evaluated and parked. Not needed for personal sharing,
+  and everything it would require (TWA packaging, $25 Console fee, review)
+  can be revisited from git history if discoverability ever matters.
 
 ## Environment Variables
 
@@ -676,25 +671,14 @@ it is out of scope until V3 is done.
   `public/icons/`, minimal service worker (shell precache, offline fallback),
   theme-color + iOS touch icon, `/privacy` page. Verified: manifest valid,
   SW/offline/icons serve, PWA meta present. No behavior changes.
-- [ ] **Phase 11 — Play Store via TWA (optional, later)** — only if strangers need
-  to discover the app. Concrete steps:
-  1. PWABuilder.com (no local Android setup): enter production URL → validate
-     PWA score → download Android package (TWA, `.aab`).
-  2. Play Console account ($25 one-time) → create app → store listing (name,
-     description, screenshots from a real phone, icon, feature graphic).
-  3. Upload `.aab` to the **internal testing** track first; install on your own
-     phone via the test link and smoke-test sign-in + save.
-  4. Content rating questionnaire + data-safety form (declare: Google email,
-     app activity/workout data, stored in Supabase).
-  5. Promote to production → review (typically days) → listed.
-  Done = searchable on Play, installed app updates itself on every `git push`.
 
 Phases 0–7 = V1 (usable, deployable, no login).
 Phases 8–9 = V2 (accounts + personal cloud data, live in production).
-Phase 10 = distribution without a store. Phase 11 = store presence (optional).
+Phase 10 = installable distribution without a store. No Phase 11: a Play Store
+listing was evaluated and parked — personal sharing needs nothing more.
 V3 progress-tracking features stay parked until real usage demands them.
 
 ---
 
-_Phase 10 complete: the link installs like an app. Remaining optional work: Phase 11
-(Play Store via TWA) and the parked V3 tracking ideas — both wait for real demand._
+_Phase 10 complete: the link installs like an app. The project is done — V3 ideas
+stay parked until real usage demands them._
