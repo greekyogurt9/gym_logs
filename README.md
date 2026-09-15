@@ -617,8 +617,9 @@ it is out of scope until V3 is done.
   prod-mode (`next start`) route smoke. Accepted cuts documented in chat; no new features.
 - [x] **Phase 6 — GitHub (V1)** — repo initialized locally on `main`, first clean commit
   (secret-checked), pushed to `greekyogurt9/gym_logs`. Branch protection: enable in GitHub UI.
-- [ ] **Phase 7 — Vercel deployment (V1 live)** — import repo, set env vars (none required for V1
-  local mode), deploy `main`, verify prod smoke list, record prod URL.
+- [x] **Phase 7 — Vercel deployment (V1 live)** — deployed via CLI (`vercel --prod`),
+  no env vars required for V1 local mode, prod smoke list passes.
+  Production URL: https://mygymbuddy-eight.vercel.app
 - [ ] **Phase 8 — Authentication (V2)** — Google provider, callback route, middleware,
   `SupabaseRepository`, RLS verified with two users, sign in/out UI.
 - [ ] **Phase 9 — Local/cloud sync (V2)** — migrate button (local → cloud with read-back
@@ -630,4 +631,4 @@ V3 features (PRs, graphs, repeat-workout) start only after Phase 9 is live and s
 
 ---
 
-_Phase 6 complete. Next action: say "proceed to Phase 7" to deploy to Vercel._
+_Phase 7 complete — V1 is live. Next action: say "proceed to Phase 8" for Google auth + cloud data (V2)._
