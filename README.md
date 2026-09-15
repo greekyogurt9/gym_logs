@@ -625,7 +625,8 @@ it is out of scope until V3 is done.
   Production URL: https://mygymbuddy-eight.vercel.app
 - [x] **Phase 8 — Authentication (V2)** — Google provider docs + callback route + proxy
   session refresh, `SupabaseRepository`, sign in/out UI, RLS verified with two users
-  (live integration test on local stack). Remote link + `db push` = your checklist below.
+  (live integration test on local stack). Remote project linked, migration pushed
+  and verified (5 tables + 19 policies + RLS on).
 - [ ] **Phase 9 — Local/cloud sync (V2)** — migrate button (local → cloud with read-back
   verification), cloud-as-default after migration, backup key retained.
 
