@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { draftFromDetail, saveDraft } from "@/lib/draft";
+import { iconForTitle } from "@/lib/exercises";
 import { formatWorkoutDate } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
 import { browserStorage } from "@/lib/local-storage-repository";
@@ -104,7 +105,10 @@ export default function WorkoutDetailPage() {
       </Link>
       <div className="page-head">
         <div>
-          <h1>{workout.title}</h1>
+          <h1>
+            {iconForTitle(workout.title) ? `${iconForTitle(workout.title)} ` : ""}
+            {workout.title}
+          </h1>
           <p className="muted">
             {formatWorkoutDate(workout.startedAt)} ·{" "}
             {Math.round(workoutVolume(detail)).toLocaleString()} kg total

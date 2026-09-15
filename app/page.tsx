@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import MigrateBanner from "@/components/migrate-banner";
+import { iconForTitle } from "@/lib/exercises";
 import { formatWorkoutDate } from "@/lib/format";
 import { getWorkoutRepository, isCloudConfigured } from "@/lib/get-repository";
 import { workoutVolume } from "@/lib/progress";
@@ -155,7 +156,10 @@ export default function HistoryPage() {
               <li key={w.id}>
                 <Link className="row" href={`/workouts/${w.id}`}>
                   <span className="row-top">
-                    <span className="row-title">{w.title}</span>
+                    <span className="row-title">
+                      {iconForTitle(w.title) ? `${iconForTitle(w.title)} ` : ""}
+                      {w.title}
+                    </span>
                     <span className="muted">{formatWorkoutDate(w.startedAt)}</span>
                   </span>
                   <span className="muted small">

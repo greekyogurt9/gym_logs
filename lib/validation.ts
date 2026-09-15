@@ -3,6 +3,7 @@ import type {
   NewSetInput,
   NewWorkoutInput,
 } from "./types";
+import { WORKOUT_TYPES, isWorkoutTypeId } from "./exercises";
 
 export interface TargetInput {
   exerciseName: string;
@@ -180,12 +181,10 @@ export function validateNewWorkout(input: unknown): NewWorkoutInput {
 
   let title = "";
   const t = input["title"];
-  if (typeof t !== "string" || t.trim().length === 0) {
-    issues.push({ path: "title", message: "Workout needs a title." });
-  } else if (t.trim().length > TITLE_MAX) {
+  if (typeof t !== "string" || !isWorkoutTypeId(t.trim())) {
     issues.push({
       path: "title",
-      message: `Title must be at most ${TITLE_MAX} characters.`,
+      message: `Pick a workout day: ${WORKOUT_TYPES.map((w) => w.id).join(", ")}.`,
     });
   } else {
     title = t.trim();

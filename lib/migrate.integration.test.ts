@@ -39,7 +39,7 @@ describe.skipIf(!URL || !KEY)("migrateLocalToCloud (local stack)", () => {
     const storage = createMemoryStorage();
     const source = createLocalStorageRepository(storage);
     await source.createWorkout({
-      title: "Migrate Me",
+      title: "Pull",
       startedAt: "2026-09-12T10:00:00.000Z",
       exercises: [{ exerciseName: "Squat", sets: [{ weightKg: 50, reps: 5 }] }],
     });
@@ -53,8 +53,8 @@ describe.skipIf(!URL || !KEY)("migrateLocalToCloud (local stack)", () => {
       expect(result.backupKey).toMatch(/:backup:/);
     }
     const cloud = await target.listWorkouts();
-    expect(cloud.map((w) => w.title)).toContain("Migrate Me");
-    const detail = await target.getWorkout(cloud.find((w) => w.title === "Migrate Me")!.id);
+    expect(cloud.map((w) => w.title)).toContain("Pull");
+    const detail = await target.getWorkout(cloud.find((w) => w.title === "Pull")!.id);
     expect(detail?.exercises[0].sets[0]).toMatchObject({ weightKg: 50, reps: 5 });
     expect(storage.getItem(LOCAL_STORAGE_KEY_V1)).toBeNull();
 

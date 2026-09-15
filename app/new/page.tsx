@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { takeDraft } from "@/lib/draft";
+import { suggestionsForType, WORKOUT_TYPES } from "@/lib/exercises";
 import { dateInputToIso, todayLocalDate } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
 import { isValidationError } from "@/lib/validation";
@@ -118,19 +119,27 @@ export default function NewWorkoutPage() {
       )}
 
       <form onSubmit={onSubmit} noValidate>
-        <div className="field">
-          <label htmlFor="title">Title</label>
-          <input
-            id="title"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Legs"
-            maxLength={81}
-            aria-invalid={!!fieldErrors["title"]}
-          />
+        <fieldset className="field">
+          <legend>Day</legend>
+          <div className="segment" role="radiogroup" aria-invalid={!!fieldErrors["title"]}>
+            {WORKOUT_TYPES.map((t) => (
+              <label key={t.id} className={title === t.id ? "segment-on" : ""}>
+                <input
+                  type="radio"
+                  name="day"
+                  value={t.id}
+                  checked={title === t.id}
+                  onChange={() => setTitle(t.id)}
+                />
+                <span className="segment-icon" aria-hidden="true">
+                  {t.icon}
+                </span>
+                <span>{t.label}</span>
+              </label>
+            ))}
+          </div>
           {fieldErrors["title"] && <p className="field-error">{fieldErrors["title"]}</p>}
-        </div>
+        </fieldset>
 
         <div className="field">
           <label htmlFor="date">Date</label>
@@ -170,10 +179,17 @@ export default function NewWorkoutPage() {
                 type="text"
                 value={ex.name}
                 onChange={(e) => updateExercise(i, { name: e.target.value })}
-                placeholder="Squat"
+                placeholder={suggestionsForType(title)[0] ?? "Squat"}
                 maxLength={61}
+                list={`ex-suggest-${i}`}
+                autoComplete="off"
                 aria-invalid={!!fieldErrors[`exercises[${i}].exerciseName`]}
               />
+              <datalist id={`ex-suggest-${i}`}>
+                {suggestionsForType(title).map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
               {fieldErrors[`exercises[${i}].exerciseName`] && (
                 <p className="field-error">{fieldErrors[`exercises[${i}].exerciseName`]}</p>
               )}

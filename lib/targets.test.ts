@@ -52,7 +52,7 @@ describe("local history + targets", () => {
       ],
     });
     await repo.createWorkout({
-      title: "Legs 2",
+      title: "Push",
       startedAt: "2026-09-15T10:00:00.000Z",
       exercises: [{ exerciseName: "Squat", sets: [{ weightKg: 90, reps: 5 }] }],
     });

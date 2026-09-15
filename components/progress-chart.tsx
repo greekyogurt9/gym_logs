@@ -6,12 +6,13 @@ import { formatWorkoutDate } from "@/lib/format";
 // (computed + unit-tested in lib/progress.ts) — this file only draws.
 // viewBox scales to any width; pre-scaled coordinates keep text legible.
 
-const GRID = "#2a2a2a";
-const LINE = "#ededed";
-const DOT = "#ededed";
-const LATEST = "#4ade80";
-const TARGET_LINE = "#4ade80";
-const LABEL = "#9a9a9a";
+const GRID = "#e6ddcb";
+const LINE = "#1c1a17";
+const DOT = "#1c1a17";
+const LATEST = "#1c1a17";
+const TARGET_LINE = "#1c1a17";
+const LABEL = "#8a8172";
+const PAPER = "#faf7f1";
 
 export default function ProgressChart({
   layout,
@@ -80,7 +81,7 @@ export default function ProgressChart({
             cy={d.y}
             r={i === dots.length - 1 ? 6 : 4.5}
             fill={i === dots.length - 1 ? LATEST : DOT}
-            stroke="#0a0a0a"
+            stroke={PAPER}
             strokeWidth={2}
           >
             <title>{`${formatWorkoutDate(d.date)} — ${d.valueKg} kg`}</title>

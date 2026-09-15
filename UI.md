@@ -175,6 +175,11 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
   `+00:00` spellings — caught by a failing integration test, fixed).
 - Verified: 54 unit + 3 live integration tests green, `tsc`/`eslint`/`build`
   clean, all routes HTTP 200, remote schema confirmed (targets table + RLS).
+- **Post-ship user round (same session):** free-text title replaced by a
+  Legs/Push/Pull segmented selector (titles stored unchanged — no migration);
+  exercise inputs suggest per-day catalogs via native datalist (custom names
+  still allowed). Theme re-cut to minimal light: paper beige, ink, white
+  cards, clay red; chart/manifest/icons/viewport follow. No DB changes.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 

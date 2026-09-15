@@ -40,7 +40,7 @@ describe.skipIf(!URL || !KEY)("SupabaseRepository (local stack)", () => {
     const repoB = createSupabaseRepository(clientB);
 
     const created = await repoA.createWorkout({
-      title: "Cloud Legs",
+      title: "Legs",
       startedAt: new Date().toISOString(),
       exercises: [{ exerciseName: "Squat", sets: [{ weightKg: 60, reps: 5 }] }],
     });
@@ -53,7 +53,7 @@ describe.skipIf(!URL || !KEY)("SupabaseRepository (local stack)", () => {
     await repoB.deleteWorkout(created.id);
 
     const detail = await repoA.getWorkout(created.id);
-    expect(detail?.workout.title).toBe("Cloud Legs");
+    expect(detail?.workout.title).toBe("Legs");
     expect(detail?.exercises).toHaveLength(1);
     expect(detail?.exercises[0].exercise.position).toBe(0);
     expect(detail?.exercises[0].sets[0]).toMatchObject({

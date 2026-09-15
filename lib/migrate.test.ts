@@ -93,15 +93,15 @@ describe("migrateLocalToCloud", () => {
   it("moves everything oldest-first, verifies, backs up and clears", async () => {
     const storage = createMemoryStorage();
     const source = createLocalStorageRepository(storage);
-    await source.createWorkout(legsInput("2026-09-15T10:00:00.000Z", "Newer"));
-    await source.createWorkout(legsInput("2026-09-10T10:00:00.000Z", "Older"));
+    await source.createWorkout(legsInput("2026-09-15T10:00:00.000Z", "Push"));
+    await source.createWorkout(legsInput("2026-09-10T10:00:00.000Z", "Legs"));
     const rawBefore = storage.getItem(LOCAL_STORAGE_KEY_V1);
     const target = createFakeCloud();
 
     const result = await migrateLocalToCloud(source, target, storage);
 
     expect(result).toMatchObject({ ok: true, migrated: 2, skipped: 0 });
-    expect(target.details.map((d) => d.workout.title)).toEqual(["Older", "Newer"]);
+    expect(target.details.map((d) => d.workout.title)).toEqual(["Legs", "Push"]);
     const moved = target.details[0];
     expect(moved.exercises[0].exercise.exerciseName).toBe("Squat");
     expect(moved.exercises[0].sets[0]).toMatchObject({ weightKg: 30, reps: 10 });
@@ -141,9 +141,9 @@ describe("migrateLocalToCloud", () => {
   it("stops on first failure and leaves local data fully intact", async () => {
     const storage = createMemoryStorage();
     const source = createLocalStorageRepository(storage);
-    await source.createWorkout(legsInput("2026-09-10T10:00:00.000Z", "Good"));
-    await source.createWorkout(legsInput("2026-09-15T10:00:00.000Z", "Bad"));
-    const target = createFakeCloud({ failTitles: ["Bad"] });
+    await source.createWorkout(legsInput("2026-09-10T10:00:00.000Z", "Legs"));
+    await source.createWorkout(legsInput("2026-09-15T10:00:00.000Z", "Push"));
+    const target = createFakeCloud({ failTitles: ["Push"] });
 
     const result = await migrateLocalToCloud(source, target, storage);
 
@@ -156,7 +156,7 @@ describe("migrateLocalToCloud", () => {
     // Good is now skipped as already-present).
     expect(storage.getItem(LOCAL_STORAGE_KEY_V1)).not.toBeNull();
     expect(storage.keys().filter((k) => k.includes(":backup:"))).toEqual([]);
-    expect((await source.listWorkouts()).map((w) => w.title).sort()).toEqual(["Bad", "Good"]);
+    expect((await source.listWorkouts()).map((w) => w.title).sort()).toEqual(["Legs", "Push"]);
   });
 
   it("treats read-back mismatch as failure and keeps local intact", async () => {
