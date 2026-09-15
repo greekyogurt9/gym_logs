@@ -1,0 +1,299 @@
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  height: 100%;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* --- My Gym Buddy: deliberately boring styles. One column, big tap
+   targets, readable in the gym. No framework, no animations. --- */
+
+.container {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .site-header {
+    border-bottom-color: #333;
+  }
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 1rem 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+.back {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #555;
+}
+
+@media (prefers-color-scheme: dark) {
+  .back {
+    color: #aaa;
+  }
+}
+
+.muted {
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .muted {
+    color: #999;
+  }
+}
+
+.button,
+.button-secondary,
+.button-danger {
+  display: inline-block;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.button {
+  background: #171717;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .button {
+    background: #ededed;
+    color: #0a0a0a;
+  }
+}
+
+.button-secondary {
+  background: transparent;
+  border-color: #ccc;
+  color: inherit;
+}
+
+.button-danger {
+  background: #b3261e;
+  color: #fff;
+}
+
+.button:disabled,
+.button-danger:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.link-danger {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  color: #b3261e;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .row {
+    border-color: #333;
+  }
+}
+
+.row-title {
+  font-weight: 600;
+}
+
+.card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .card {
+    border-color: #333;
+  }
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.sets {
+  margin: 0.5rem 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+}
+
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.field input {
+  font-size: 16px; /* 16px stops iOS zooming into fields — gym-friendly */
+  padding: 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.field-error {
+  color: #b3261e;
+  font-size: 0.85rem;
+}
+
+.error-box {
+  border: 1px solid #b3261e;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.empty {
+  margin: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.set-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.set-row .field {
+  flex: 1;
+  margin: 0.5rem 0;
+}
+
+.set-num {
+  padding-top: 2rem;
+  min-width: 1.25rem;
+  text-align: center;
+  color: #666;
+}
+
+.set-row .link-danger {
+  margin-top: 1.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+  }
+}
