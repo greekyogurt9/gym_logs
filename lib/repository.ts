@@ -20,10 +20,39 @@ import type { Workout, WorkoutDetail } from "./types";
  *   parsed storage JSON directly — no "as" casts at call sites.
  * - deleteWorkout() removes the workout and all its exercises + sets. It must
  *   not throw when the id is already gone (idempotent delete).
+ * - getExerciseHistory() returns one point per session containing the
+ *   exercise, oldest first. bestTopSetKg is null when the session has no
+ *   qualifying set (see QUALIFYING_REPS_MIN) — presentation skips those.
+ * - Targets: one active target per exercise. setTarget() upserts (same
+ *   exercise twice replaces), deleteTarget() is idempotent like
+ *   deleteWorkout().
  */
+
+/** Minimum reps for a set to count toward the progress line and targets. */
+export const QUALIFYING_REPS_MIN = 8;
+
+export interface ExerciseHistoryPoint {
+  /** ISO timestamp of the session (workout.startedAt). */
+  date: string;
+  /** Best weightKg among sets with reps >= QUALIFYING_REPS_MIN, else null. */
+  bestTopSetKg: number | null;
+  totalVolumeKg: number;
+}
+
+export interface ExerciseTarget {
+  exerciseName: string;
+  targetWeightKg: number;
+  /** YYYY-MM-DD the lifter aims to hit it by. */
+  targetDate: string;
+}
+
 export interface WorkoutRepository {
   listWorkouts(): Promise<Workout[]>;
   getWorkout(id: string): Promise<WorkoutDetail | null>;
   createWorkout(input: unknown): Promise<Workout>;
   deleteWorkout(id: string): Promise<void>;
+  getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryPoint[]>;
+  getTarget(exerciseName: string): Promise<ExerciseTarget | null>;
+  setTarget(input: unknown): Promise<ExerciseTarget>;
+  deleteTarget(exerciseName: string): Promise<void>;
 }

@@ -5,13 +5,14 @@ import { useEffect, useState } from "react";
 import MigrateBanner from "@/components/migrate-banner";
 import { formatWorkoutDate } from "@/lib/format";
 import { getWorkoutRepository, isCloudConfigured } from "@/lib/get-repository";
+import { workoutVolume } from "@/lib/progress";
 import { getSessionEmail, subscribeToAuthEvents } from "@/lib/supabase/auth";
 import type { Workout } from "@/lib/types";
 
-// History list. Client-rendered because V1 storage is localStorage, which
-// only exists in the browser. Shows title + date only: per-workout counts
-// would need one extra read per row (N+1), a habit we don't want to bake in
-// before the Supabase implementation lands in Phase 8.
+// History list. Client-rendered because storage lives in the browser
+// (localStorage) or behind a session (Supabase). Cards show volume lines:
+// details are fetched in parallel after the list (capped) — one round of
+// small reads, not one per render, and short histories barely notice.
 
 export default function HistoryPage() {
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -23,6 +24,10 @@ export default function HistoryPage() {
   // refreshes this page's data on sign in/out — in place, so /new drafts
   // elsewhere are never disturbed.
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  // Per-workout stats for card sub-lines, filled in after the list loads.
+  const [stats, setStats] = useState<
+    Record<string, { exercises: number; sets: number; volume: number }>
+  >({});
 
   // Fetch-on-mount (+ on retry). State updates happen only in async
   // callbacks with a cancellation guard — never synchronously in the
@@ -45,6 +50,40 @@ export default function HistoryPage() {
       active = false;
     };
   }, [reloadToken]);
+
+  // Volume lines: one parallel round for (at most) the 100 newest rows.
+  // Fine at this scale; revisit with pagination past it.
+  useEffect(() => {
+    if (workouts.length === 0) return;
+    let active = true;
+    getWorkoutRepository()
+      .then((repo) =>
+        Promise.all(
+          workouts.slice(0, 100).map((w) =>
+            repo.getWorkout(w.id).then((d) => ({ id: w.id, detail: d })),
+          ),
+        ),
+      )
+      .then((rows) => {
+        if (!active) return;
+        const next: Record<string, { exercises: number; sets: number; volume: number }> = {};
+        for (const { id, detail } of rows) {
+          if (!detail) continue;
+          next[id] = {
+            exercises: detail.exercises.length,
+            sets: detail.exercises.reduce((n, e) => n + e.sets.length, 0),
+            volume: Math.round(workoutVolume(detail)),
+          };
+        }
+        setStats(next);
+      })
+      .catch(() => {
+        // Stats are decoration — a failed round leaves "…" rather than an error.
+      });
+    return () => {
+      active = false;
+    };
+  }, [workouts]);
 
   useEffect(() => {
     if (!isCloudConfigured()) return;
@@ -110,14 +149,24 @@ export default function HistoryPage() {
 
       {status === "ready" && workouts.length > 0 && (
         <ul className="list">
-          {workouts.map((w) => (
-            <li key={w.id}>
-              <Link className="row" href={`/workouts/${w.id}`}>
-                <span className="row-title">{w.title}</span>
-                <span className="muted">{formatWorkoutDate(w.startedAt)}</span>
-              </Link>
-            </li>
-          ))}
+          {workouts.map((w) => {
+            const s = stats[w.id];
+            return (
+              <li key={w.id}>
+                <Link className="row" href={`/workouts/${w.id}`}>
+                  <span className="row-top">
+                    <span className="row-title">{w.title}</span>
+                    <span className="muted">{formatWorkoutDate(w.startedAt)}</span>
+                  </span>
+                  <span className="muted small">
+                    {s
+                      ? `${s.exercises} exercise${s.exercises === 1 ? "" : "s"} · ${s.sets} set${s.sets === 1 ? "" : "s"} · ${s.volume.toLocaleString()} kg`
+                      : "…"}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

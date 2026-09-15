@@ -73,6 +73,19 @@ function createFakeCloud(opts: { failTitles?: string[]; dropSets?: boolean } = {
       const i = details.findIndex((d) => d.workout.id === id);
       if (i >= 0) details.splice(i, 1);
     },
+    // New interface methods — unused by migration flows, minimal stubs.
+    async getExerciseHistory() {
+      return [];
+    },
+    async getTarget() {
+      return null;
+    },
+    async setTarget() {
+      throw new Error("not implemented in fake");
+    },
+    async deleteTarget() {
+      // no-op
+    },
   };
 }
 

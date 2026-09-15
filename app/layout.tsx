@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
-import AuthButton from "@/components/auth-button";
 import ServiceWorkerRegister from "@/components/sw-register";
+import TabBar from "@/components/tab-bar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,14 +45,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Link className="brand" href="/">
             My Gym Buddy
           </Link>
-          <nav className="site-nav">
-            <AuthButton />
-            <Link className="button-secondary" href="/new">
-              + New
-            </Link>
-          </nav>
         </header>
         <main className="container">{children}</main>
+        <TabBar />
       </body>
     </html>
   );

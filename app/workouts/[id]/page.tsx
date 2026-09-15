@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { draftFromDetail, saveDraft } from "@/lib/draft";
 import { formatWorkoutDate } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
+import { browserStorage } from "@/lib/local-storage-repository";
+import { workoutVolume } from "@/lib/progress";
 import type { WorkoutDetail } from "@/lib/types";
 
 // Workout detail + delete. Three states beyond loading: storage error,
@@ -53,6 +56,20 @@ export default function WorkoutDetailPage() {
     }
   }
 
+  function onRepeat() {
+    if (!detail) return;
+    // Clone into the /new form via a one-shot draft (today's date, last
+    // session's numbers as the starting point). Draft errors are impossible
+    // from our own data — but never let a clone failure brick the page.
+    try {
+      saveDraft(browserStorage(), draftFromDetail(detail));
+    } catch {
+      setError("Could not prepare the repeat. Your data is safe — try again.");
+      return;
+    }
+    router.push("/new");
+  }
+
   if (status === "loading") return <p className="muted">Loading…</p>;
 
   if (status === "error") {
@@ -88,7 +105,10 @@ export default function WorkoutDetailPage() {
       <div className="page-head">
         <div>
           <h1>{workout.title}</h1>
-          <p className="muted">{formatWorkoutDate(workout.startedAt)}</p>
+          <p className="muted">
+            {formatWorkoutDate(workout.startedAt)} ·{" "}
+            {Math.round(workoutVolume(detail)).toLocaleString()} kg total
+          </p>
         </div>
         <button
           type="button"
@@ -100,6 +120,10 @@ export default function WorkoutDetailPage() {
         </button>
       </div>
 
+      <button type="button" className="button-secondary" onClick={onRepeat}>
+        Repeat this workout
+      </button>
+
       {error && (
         <div className="error-box" role="alert">
           <p>{error}</p>
@@ -108,10 +132,17 @@ export default function WorkoutDetailPage() {
 
       {exercises.map(({ exercise, sets }) => (
         <section key={exercise.id} className="card">
-          <h2>{exercise.exerciseName}</h2>
+          <h2>
+            <Link
+              className="link-accent"
+              href={`/exercises/${encodeURIComponent(exercise.exerciseName)}`}
+            >
+              {exercise.exerciseName}
+            </Link>
+          </h2>
           <ol className="sets">
             {sets.map((s) => (
-              <li key={s.id}>
+              <li key={s.id} className="set-line">
                 Set {s.setNumber} — {s.weightKg} kg × {s.reps} reps
               </li>
             ))}

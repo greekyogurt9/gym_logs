@@ -4,6 +4,12 @@ import type {
   NewWorkoutInput,
 } from "./types";
 
+export interface TargetInput {
+  exerciseName: string;
+  targetWeightKg: number;
+  targetDate: string;
+}
+
 // Validation for My Gym Buddy.
 //
 // Hand-rolled on purpose: the rules are small (lengths, ranges, required
@@ -220,4 +226,74 @@ export function validateNewWorkout(input: unknown): NewWorkoutInput {
   }
 
   return { title, startedAt: startedAt as string, endedAt, exercises };
+}
+
+function checkWeight(
+  issues: ValidationIssue[],
+  path: string,
+  v: unknown,
+): number | null {
+  if (
+    typeof v !== "number" ||
+    !Number.isFinite(v) ||
+    v <= 0 ||
+    v > WEIGHT_KG_MAX ||
+    Math.abs(v * 10 - Math.round(v * 10)) > 1e-9
+  ) {
+    issues.push({
+      path,
+      message: `Weight must be a number above 0, at most ${WEIGHT_KG_MAX} kg, with at most 1 decimal.`,
+    });
+    return null;
+  }
+  return v;
+}
+
+function checkExerciseName(
+  issues: ValidationIssue[],
+  path: string,
+  v: unknown,
+): string | null {
+  if (typeof v !== "string" || v.trim().length === 0) {
+    issues.push({ path, message: "Exercise needs a name." });
+    return null;
+  }
+  if (v.trim().length > EXERCISE_NAME_MAX) {
+    issues.push({
+      path,
+      message: `Exercise name must be at most ${EXERCISE_NAME_MAX} characters.`,
+    });
+    return null;
+  }
+  return v.trim();
+}
+
+/**
+ * Target form validation: same name/weight rules as sets, plus a calendar
+ * date (past allowed — the UI renders the overdue state instead of
+ * forbidding it).
+ */
+export function validateTarget(input: unknown): TargetInput {
+  const issues: ValidationIssue[] = [];
+  if (!isRecord(input)) {
+    throw new ValidationError([{ path: "", message: "Target must be an object." }]);
+  }
+  const exerciseName = checkExerciseName(issues, "exerciseName", input["exerciseName"]);
+  const targetWeightKg = checkWeight(issues, "targetWeightKg", input["targetWeightKg"]);
+
+  let targetDate = "";
+  const d = input["targetDate"];
+  if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d))) {
+    issues.push({ path: "targetDate", message: "Target date must be a valid YYYY-MM-DD date." });
+  } else {
+    targetDate = d;
+  }
+
+  if (issues.length > 0 || !exerciseName || targetWeightKg === null) {
+    if (issues.length === 0) {
+      issues.push({ path: "", message: "Invalid target." });
+    }
+    throw new ValidationError(issues);
+  }
+  return { exerciseName, targetWeightKg, targetDate };
 }

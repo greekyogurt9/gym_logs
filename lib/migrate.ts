@@ -37,7 +37,10 @@ export interface MigrationFailure {
 export type MigrationResult = MigrationSuccess | MigrationFailure;
 
 function identityOf(title: string, startedAt: string): string {
-  return `${title}\n${startedAt}`;
+  // Compare instants, not strings: local ISO (".000Z") and Postgres
+  // ("+00:00") spell the same moment differently across backends.
+  const t = Date.parse(startedAt);
+  return `${title}\n${Number.isNaN(t) ? startedAt : t}`;
 }
 
 export async function migrateLocalToCloud(

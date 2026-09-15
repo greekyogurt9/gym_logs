@@ -1,7 +1,12 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Workout, WorkoutDetail, WorkoutExerciseDetail } from "./types";
-import type { WorkoutRepository } from "./repository";
-import { validateNewWorkout } from "./validation";
+import type {
+  ExerciseHistoryPoint,
+  ExerciseTarget,
+  WorkoutRepository,
+} from "./repository";
+import { QUALIFYING_REPS_MIN } from "./repository";
+import { validateNewWorkout, validateTarget } from "./validation";
 
 // Cloud storage: Postgres via Supabase, behind the same WorkoutRepository
 // interface as the local version. Two things to understand here:
@@ -221,6 +226,130 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
       // users' ids both delete zero rows — idempotent, like the interface
       // requires, with no existence check to leak.
       const { error } = await supabase.from("workouts").delete().eq("id", id);
+      if (error) throw error;
+    },
+
+    async getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryPoint[]> {
+      const user = await requireUser();
+      const name = exerciseName.trim();
+      // Exercise id first (RLS-scoped by user_id); unknown names yield [].
+      const { data: exData, error: exError } = await supabase
+        .from("exercises")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("name", name)
+        .maybeSingle();
+      if (exError) throw exError;
+      if (!exData) return [];
+      const exerciseId = (exData as { id: string }).id;
+
+      const { data: weData, error: weError } = await supabase
+        .from("workout_exercises")
+        .select("id, workout_id, workouts!inner ( started_at )")
+        .eq("exercise_id", exerciseId);
+      if (weError) throw weError;
+      const links = (weData ?? []) as {
+        id: string;
+        workout_id: string;
+        workouts: { started_at: string } | { started_at: string }[] | null;
+      }[];
+      if (links.length === 0) return [];
+
+      const { data: setData, error: setError } = await supabase
+        .from("sets")
+        .select("workout_exercise_id, weight_kg, reps")
+        .in(
+          "workout_exercise_id",
+          links.map((l) => l.id),
+        );
+      if (setError) throw setError;
+      const rows = (setData ?? []) as {
+        workout_exercise_id: string;
+        weight_kg: number;
+        reps: number;
+      }[];
+
+      const byWorkout = new Map<string, { date: string; sets: { weightKg: number; reps: number }[] }>();
+      for (const link of links) {
+        const nested = Array.isArray(link.workouts) ? link.workouts[0] : link.workouts;
+        if (!nested) continue;
+        byWorkout.set(link.id, { date: nested.started_at, sets: [] });
+      }
+      for (const s of rows) {
+        byWorkout
+          .get(s.workout_exercise_id)
+          ?.sets.push({ weightKg: s.weight_kg, reps: s.reps });
+      }
+      return [...byWorkout.values()]
+        .map(({ date, sets }) => {
+          const qualifying = sets.filter((s) => s.reps >= QUALIFYING_REPS_MIN);
+          return {
+            date,
+            bestTopSetKg:
+              qualifying.length > 0 ? Math.max(...qualifying.map((s) => s.weightKg)) : null,
+            totalVolumeKg: sets.reduce((n, s) => n + s.weightKg * s.reps, 0),
+          };
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
+
+    async getTarget(exerciseName: string): Promise<ExerciseTarget | null> {
+      const user = await requireUser();
+      const name = exerciseName.trim();
+      const { data: exData, error: exError } = await supabase
+        .from("exercises")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("name", name)
+        .maybeSingle();
+      if (exError) throw exError;
+      if (!exData) return null;
+      const { data, error } = await supabase
+        .from("targets")
+        .select("target_weight_kg, target_date")
+        .eq("user_id", user.id)
+        .eq("exercise_id", (exData as { id: string }).id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const row = data as { target_weight_kg: number; target_date: string };
+      return { exerciseName: name, targetWeightKg: row.target_weight_kg, targetDate: row.target_date };
+    },
+
+    async setTarget(input: unknown): Promise<ExerciseTarget> {
+      const valid = validateTarget(input);
+      const user = await requireUser();
+      const exerciseId = await findOrCreateExercise(user.id, valid.exerciseName);
+      // Upsert on (user_id, exercise_id): one active target per exercise.
+      const { error } = await supabase.from("targets").upsert(
+        {
+          user_id: user.id,
+          exercise_id: exerciseId,
+          target_weight_kg: valid.targetWeightKg,
+          target_date: valid.targetDate,
+        },
+        { onConflict: "user_id,exercise_id" },
+      );
+      if (error) throw error;
+      return { ...valid };
+    },
+
+    async deleteTarget(exerciseName: string): Promise<void> {
+      const user = await requireUser();
+      const name = exerciseName.trim();
+      const { data: exData, error: exError } = await supabase
+        .from("exercises")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("name", name)
+        .maybeSingle();
+      if (exError) throw exError;
+      if (!exData) return; // Idempotent: nothing to delete.
+      const { error } = await supabase
+        .from("targets")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("exercise_id", (exData as { id: string }).id);
       if (error) throw error;
     },
   };

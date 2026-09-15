@@ -1,8 +1,7 @@
 # UI Refresh Plan — minimalistic, gym-proven
 
-Status: **proposed, not approved, not built.** No code changes accompany this
-document. When a slice is approved, implementation follows the phasing in
-§7 and §10, and this header is updated.
+Status: **UI-A and V3-A BUILT and shipped** (see §9 log). UI-B (live session)
+and UI-C (rest timer + hardening) remain planned, untouched.
 
 Date: September 2026 (extended: progress charts + per-exercise targets).
 Reference apps: Hevy (4.9★, 15M+ users), Strong.
@@ -162,6 +161,20 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
 - Refined: only sets of **8+ reps** qualify for the line and for hitting a
   target ("120 kg" = 120 for 8). Heavy low-rep sets can't hijack the trend;
   sessions without a qualifying set are skipped, never zero-filled.
+- **BUILT (UI-A + V3-A):** dark-first tokens + bottom TabBar (Log/History/You),
+  `/account` page (not a sheet — same patterns as every screen, less code),
+  history cards with volume lines (details fetched in parallel, capped at 100
+  newest; pagination later), detail with volume + Repeat (via one-shot draft
+  into `/new`) + tappable exercise names, `/exercises/[name]` with SVG chart,
+  stats, target card, session table. Log tab points at `/new` until UI-B
+  replaces it with the live session screen.
+- Data layer grew honestly: `getExerciseHistory` / `getTarget` / `setTarget` /
+  `deleteTarget` on the interface (both repos), `validateTarget`, second
+  migration (`targets` + RLS, pushed + verified on remote), migrate
+  skip-matching compares **instants not strings** (local `.000Z` vs Postgres
+  `+00:00` spellings — caught by a failing integration test, fixed).
+- Verified: 54 unit + 3 live integration tests green, `tsc`/`eslint`/`build`
+  clean, all routes HTTP 200, remote schema confirmed (targets table + RLS).
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 

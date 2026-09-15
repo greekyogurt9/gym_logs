@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { takeDraft } from "@/lib/draft";
 import { dateInputToIso, todayLocalDate } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
 import { isValidationError } from "@/lib/validation";
@@ -37,6 +38,24 @@ export default function NewWorkoutPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Repeat flow: the detail page may leave a one-shot draft (Repeat button).
+  // Applied in an effect — mount-time only, client-side only — so SSR
+  // prerendering never sees window-dependent state (no hydration mismatch).
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (!active) return;
+      const draft = takeDraft();
+      if (!draft) return;
+      setTitle(draft.title);
+      setDate(draft.date);
+      if (draft.exercises.length > 0) setExercises(draft.exercises);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function updateExercise(i: number, patch: Partial<ExerciseDraft>) {
     setExercises((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, ...patch } : ex)));

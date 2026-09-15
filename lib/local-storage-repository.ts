@@ -4,8 +4,16 @@ import type {
   WorkoutExerciseDetail,
 } from "./types";
 import { LOCAL_STORAGE_KEY_V1 } from "./types";
-import type { WorkoutRepository } from "./repository";
-import { validateNewWorkout } from "./validation";
+import type {
+  ExerciseHistoryPoint,
+  ExerciseTarget,
+  WorkoutRepository,
+} from "./repository";
+import { QUALIFYING_REPS_MIN } from "./repository";
+import { validateNewWorkout, validateTarget } from "./validation";
+
+/** Local targets live beside workouts under their own key (same backup rules apply). */
+export const LOCAL_TARGETS_KEY_V1 = "my-gym-buddy:targets:v1";
 
 // V1 storage: browser localStorage behind the WorkoutRepository interface.
 //
@@ -179,5 +187,76 @@ export function createLocalStorageRepository(
       // so we never clobber storage for nothing.
       if (kept.length !== all.length) saveAll(kept);
     },
+
+    async getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryPoint[]> {
+      const name = exerciseName.trim();
+      return loadAll()
+        .flatMap((d) =>
+          d.exercises
+            .filter((e) => e.exercise.exerciseName === name)
+            .map((e) => {
+              const qualifying = e.sets.filter((s) => s.reps >= QUALIFYING_REPS_MIN);
+              return {
+                date: d.workout.startedAt,
+                bestTopSetKg:
+                  qualifying.length > 0 ? Math.max(...qualifying.map((s) => s.weightKg)) : null,
+                totalVolumeKg: e.sets.reduce((n, s) => n + s.weightKg * s.reps, 0),
+              };
+            }),
+        )
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
+
+    async getTarget(exerciseName: string): Promise<ExerciseTarget | null> {
+      return loadTargets(storage()).find((t) => t.exerciseName === exerciseName.trim()) ?? null;
+    },
+
+    async setTarget(input: unknown): Promise<ExerciseTarget> {
+      const valid = validateTarget(input);
+      const all = loadTargets(storage()).filter((t) => t.exerciseName !== valid.exerciseName);
+      const target: ExerciseTarget = { ...valid };
+      all.push(target);
+      saveTargets(storage(), all);
+      return target;
+    },
+
+    async deleteTarget(exerciseName: string): Promise<void> {
+      const all = loadTargets(storage());
+      const kept = all.filter((t) => t.exerciseName !== exerciseName.trim());
+      if (kept.length !== all.length) saveTargets(storage(), kept);
+    },
   };
+}
+
+function loadTargets(storage: KeyValueStorage): ExerciseTarget[] {
+  const raw = storage.getItem(LOCAL_TARGETS_KEY_V1);
+  if (raw === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (t) =>
+          typeof t === "object" &&
+          t !== null &&
+          typeof (t as Record<string, unknown>)["exerciseName"] === "string" &&
+          typeof (t as Record<string, unknown>)["targetWeightKg"] === "number" &&
+          typeof (t as Record<string, unknown>)["targetDate"] === "string",
+      )
+    ) {
+      return parsed as ExerciseTarget[];
+    }
+  } catch {
+    // Corrupt: quarantine like workouts rather than crash or overwrite.
+  }
+  try {
+    storage.setItem(`${LOCAL_TARGETS_KEY_V1}:corrupt:${Date.now()}`, raw);
+  } catch {
+    // Storage blocked — show empty rather than crash.
+  }
+  return [];
+}
+
+function saveTargets(storage: KeyValueStorage, targets: ExerciseTarget[]): void {
+  storage.setItem(LOCAL_TARGETS_KEY_V1, JSON.stringify(targets));
 }
