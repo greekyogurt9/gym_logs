@@ -20,6 +20,9 @@ import type { Workout, WorkoutDetail } from "./types";
  *   parsed storage JSON directly — no "as" casts at call sites.
  * - deleteWorkout() removes the workout and all its exercises + sets. It must
  *   not throw when the id is already gone (idempotent delete).
+ * - updateWorkout() replaces title/dates/exercises of an existing workout,
+ *   preserving id + createdAt. Throws when the id does not exist. Used by
+ *   the Log tab's edit-today flow (auto-today, skip-empty-rows).
  * - getExerciseHistory() returns one point per session containing the
  *   exercise, oldest first. bestTopSetKg is null when the session has no
  *   qualifying set (see QUALIFYING_REPS_MIN) — presentation skips those.
@@ -50,6 +53,7 @@ export interface WorkoutRepository {
   listWorkouts(): Promise<Workout[]>;
   getWorkout(id: string): Promise<WorkoutDetail | null>;
   createWorkout(input: unknown): Promise<Workout>;
+  updateWorkout(id: string, input: unknown): Promise<Workout>;
   deleteWorkout(id: string): Promise<void>;
   getExerciseHistory(exerciseName: string): Promise<ExerciseHistoryPoint[]>;
   getTarget(exerciseName: string): Promise<ExerciseTarget | null>;

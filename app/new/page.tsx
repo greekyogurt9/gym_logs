@@ -3,17 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { takeDraft } from "@/lib/draft";
-import { suggestionsForType, WORKOUT_TYPES } from "@/lib/exercises";
-import { dateInputToIso, todayLocalDate } from "@/lib/format";
+import { cleanDraftExercises, takeDraft } from "@/lib/draft";
+import {
+  isWorkoutTypeId,
+  suggestionsForType,
+  templateExercisesForType,
+  WORKOUT_TYPES,
+} from "@/lib/exercises";
+import { formatWorkoutDate, isTodayIso } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
 import { isValidationError } from "@/lib/validation";
 
-// New-workout form. Draft state keeps every input as a string (what the
-// user typed); numbers are converted only at submit time, so empty fields
-// flow into the validator and come back as field messages instead of
-// crashing conversion. Form state is never cleared on failure — a save
-// error must not eat the workout you just typed in the gym.
+// Log tab: always "today". No date picker — startedAt is stamped at save
+// (create) or preserved (edit-today). Picking a day in create mode drops in
+// the 5-exercise template with empty kg/reps; empty rows save as "not
+// performed" (skipped), half-filled rows block with a message. After a save,
+// returning here loads today's latest workout for editing.
 
 interface SetDraft {
   weight: string;
@@ -31,32 +36,85 @@ function blankExercise(): ExerciseDraft {
   return { name: "", sets: [{ ...BLANK_SET }] };
 }
 
+function templateFor(dayId: string): ExerciseDraft[] {
+  const names = templateExercisesForType(dayId);
+  if (names.length === 0) return [blankExercise()];
+  return names.map((name) => ({ name, sets: [{ ...BLANK_SET }] }));
+}
+
 export default function NewWorkoutPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(todayLocalDate());
   const [exercises, setExercises] = useState<ExerciseDraft[]>([blankExercise()]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Edit-today: set when today's latest workout is loaded.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingStartedAt, setEditingStartedAt] = useState<string | null>(null);
+  const [todayState, setTodayState] = useState<"checking" | "ready">("checking");
 
-  // Repeat flow: the detail page may leave a one-shot draft (Repeat button).
-  // Applied in an effect — mount-time only, client-side only — so SSR
-  // prerendering never sees window-dependent state (no hydration mismatch).
+  // Mount once: Repeat draft wins; otherwise load today's latest (if any)
+  // into edit mode. Client-only, so SSR never sees window state.
   useEffect(() => {
     let active = true;
-    Promise.resolve().then(() => {
-      if (!active) return;
+    (async () => {
       const draft = takeDraft();
-      if (!draft) return;
-      setTitle(draft.title);
-      setDate(draft.date);
-      if (draft.exercises.length > 0) setExercises(draft.exercises);
-    });
+      if (!active) return;
+      if (draft) {
+        setTitle(draft.title);
+        if (draft.exercises.length > 0) {
+          setExercises(
+            draft.exercises.map((e) => ({
+              name: e.name,
+              sets: e.sets.length > 0 ? e.sets.map((s) => ({ ...s })) : [{ ...BLANK_SET }],
+            })),
+          );
+        }
+        setTodayState("ready");
+        return;
+      }
+      try {
+        const repo = await getWorkoutRepository();
+        if (!active) return;
+        const rows = await repo.listWorkouts();
+        if (!active) return;
+        const today = rows.find((w) => isTodayIso(w.startedAt));
+        if (!today) return;
+        const detail = await repo.getWorkout(today.id);
+        if (!active || !detail) return;
+        setTitle(detail.workout.title);
+        setEditingId(detail.workout.id);
+        setEditingStartedAt(detail.workout.startedAt);
+        const sorted = [...detail.exercises].sort(
+          (a, b) => a.exercise.position - b.exercise.position,
+        );
+        if (sorted.length > 0) {
+          setExercises(
+            sorted.map((e) => ({
+              name: e.exercise.exerciseName,
+              sets: [...e.sets]
+                .sort((a, b) => a.setNumber - b.setNumber)
+                .map((s) => ({ weight: String(s.weightKg), reps: String(s.reps) })),
+            })),
+          );
+        }
+      } catch {
+        // Log tab never bricks: fall back to a blank create form.
+      } finally {
+        if (active) setTodayState("ready");
+      }
+    })();
     return () => {
       active = false;
     };
   }, []);
+
+  function pickDay(id: string) {
+    setTitle(id);
+    // Template only when creating — renaming today's log must not wipe it.
+    if (!editingId) setExercises(templateFor(id));
+  }
 
   function updateExercise(i: number, patch: Partial<ExerciseDraft>) {
     setExercises((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, ...patch } : ex)));
@@ -77,16 +135,39 @@ export default function NewWorkoutPage() {
     setSaving(true);
     setFieldErrors({});
     setFormError("");
+    if (!isWorkoutTypeId(title.trim())) {
+      setFieldErrors({ title: "Pick a workout day: Legs, Push, Pull." });
+      setSaving(false);
+      return;
+    }
+    const { cleaned, fieldErrors: cleanErrors } = cleanDraftExercises(
+      exercises.map((ex) => ({ name: ex.name, sets: ex.sets.map((s) => ({ ...s })) })),
+    );
+    if (Object.keys(cleanErrors).length > 0) {
+      setFieldErrors(cleanErrors);
+      setSaving(false);
+      return;
+    }
+    if (cleaned.length === 0) {
+      setFormError("Log at least 1 set — empty rows don't count.");
+      setSaving(false);
+      return;
+    }
     try {
       const repo = await getWorkoutRepository();
-      await repo.createWorkout({
-        title,
-        startedAt: dateInputToIso(date),
-        exercises: exercises.map((ex) => ({
-          exerciseName: ex.name,
-          sets: ex.sets.map((s) => ({ weightKg: Number(s.weight), reps: Number(s.reps) })),
-        })),
-      });
+      if (editingId && editingStartedAt) {
+        await repo.updateWorkout(editingId, {
+          title: title.trim(),
+          startedAt: editingStartedAt,
+          exercises: cleaned,
+        });
+      } else {
+        await repo.createWorkout({
+          title: title.trim(),
+          startedAt: new Date().toISOString(),
+          exercises: cleaned,
+        });
+      }
       router.push("/");
     } catch (err: unknown) {
       if (isValidationError(err)) {
@@ -105,12 +186,33 @@ export default function NewWorkoutPage() {
     }
   }
 
+  const remainingSuggestions = title
+    ? suggestionsForType(title).filter(
+        (s) => !exercises.some((e) => e.name.trim().toLowerCase() === s.toLowerCase()),
+      )
+    : [];
+
+  if (todayState === "checking") {
+    return (
+      <div>
+        <Link className="back" href="/">
+          ← History
+        </Link>
+        <p className="muted">Loading today&apos;s workout…</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Link className="back" href="/">
         ← History
       </Link>
-      <h1>New workout</h1>
+      <h1>{editingId ? "Today's workout" : "New workout"}</h1>
+      <p className="muted small">
+        {formatWorkoutDate(new Date().toISOString())} · logged for today automatically
+        {editingId ? " · saving updates today's log" : ""}
+      </p>
 
       {formError && (
         <div className="error-box" role="alert">
@@ -129,7 +231,7 @@ export default function NewWorkoutPage() {
                   name="day"
                   value={t.id}
                   checked={title === t.id}
-                  onChange={() => setTitle(t.id)}
+                  onChange={() => pickDay(t.id)}
                 />
                 <span className="segment-icon" aria-hidden="true">
                   {t.icon}
@@ -140,20 +242,6 @@ export default function NewWorkoutPage() {
           </div>
           {fieldErrors["title"] && <p className="field-error">{fieldErrors["title"]}</p>}
         </fieldset>
-
-        <div className="field">
-          <label htmlFor="date">Date</label>
-          <input
-            id="date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            aria-invalid={!!fieldErrors["startedAt"]}
-          />
-          {fieldErrors["startedAt"] && (
-            <p className="field-error">{fieldErrors["startedAt"]}</p>
-          )}
-        </div>
 
         {fieldErrors["exercises"] && (
           <p className="field-error">{fieldErrors["exercises"]}</p>
@@ -263,6 +351,27 @@ export default function NewWorkoutPage() {
           </section>
         ))}
 
+        {remainingSuggestions.length > 0 && (
+          <div className="card">
+            <h2>Quick add</h2>
+            <p className="muted small">From the {title} catalog — empty sets, skipped unless filled.</p>
+            <div className="actions">
+              {remainingSuggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="button-secondary small"
+                  onClick={() =>
+                    setExercises((prev) => [...prev, { name: s, sets: [{ ...BLANK_SET }] }])
+                  }
+                >
+                  + {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="actions">
           <button
             type="button"
@@ -272,7 +381,7 @@ export default function NewWorkoutPage() {
             Add exercise
           </button>
           <button type="submit" className="button" disabled={saving}>
-            {saving ? "Saving…" : "Save workout"}
+            {saving ? "Saving…" : editingId ? "Update today's workout" : "Save workout"}
           </button>
         </div>
       </form>

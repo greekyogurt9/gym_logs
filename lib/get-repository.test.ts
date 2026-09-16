@@ -10,7 +10,7 @@ describe("getWorkoutRepository", () => {
     const a = await getWorkoutRepository();
     const b = await getWorkoutRepository();
     expect(a).toBe(b);
-    for (const method of ["listWorkouts", "getWorkout", "createWorkout", "deleteWorkout"] as const) {
+    for (const method of ["listWorkouts", "getWorkout", "createWorkout", "updateWorkout", "deleteWorkout"] as const) {
       expect(typeof a[method]).toBe("function");
     }
   });

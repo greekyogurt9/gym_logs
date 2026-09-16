@@ -69,6 +69,33 @@ function createFakeCloud(opts: { failTitles?: string[]; dropSets?: boolean } = {
       details.push(detail);
       return detail.workout;
     },
+    async updateWorkout(id: string, input: unknown): Promise<Workout> {
+      const valid = validateNewWorkout(input);
+      const i = details.findIndex((d) => d.workout.id === id);
+      if (i < 0) throw new Error("Workout not found.");
+      const prev = details[i];
+      const detail: WorkoutDetail = {
+        workout: {
+          id,
+          title: valid.title,
+          startedAt: valid.startedAt,
+          endedAt: valid.endedAt,
+          createdAt: prev.workout.createdAt,
+        },
+        exercises: valid.exercises.map((ex, ei) => ({
+          exercise: { id: `we-u-${ei}`, workoutId: id, exerciseName: ex.exerciseName, position: ei },
+          sets: ex.sets.map((s, j) => ({
+            id: `s-u-${ei}-${j}`,
+            workoutExerciseId: `we-u-${ei}`,
+            setNumber: j + 1,
+            weightKg: s.weightKg,
+            reps: s.reps,
+          })),
+        })),
+      };
+      details[i] = detail;
+      return detail.workout;
+    },
     async deleteWorkout(id: string): Promise<void> {
       const i = details.findIndex((d) => d.workout.id === id);
       if (i >= 0) details.splice(i, 1);

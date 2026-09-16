@@ -220,6 +220,72 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
       return toSummary(workout);
     },
 
+    async updateWorkout(id: string, input: unknown): Promise<Workout> {
+      const valid = validateNewWorkout(input);
+      const user = await requireUser();
+      // Existence check doubles as ownership check: other users' rows are
+      // invisible under RLS, so they correctly report "not found".
+      const existing = await supabase
+        .from("workouts")
+        .select("id, title, started_at, ended_at, created_at")
+        .eq("id", id)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (!existing.data) throw new Error("Workout not found.");
+
+      const { error: parentError } = await supabase
+        .from("workouts")
+        .update({
+          title: valid.title,
+          started_at: valid.startedAt,
+          ended_at: valid.endedAt ?? null,
+        })
+        .eq("id", id);
+      if (parentError) throw parentError;
+
+      // Replace children: delete links (sets cascade), then re-insert.
+      // The parent row survives a child failure, so the user can retry the
+      // edit — unlike a delete+recreate swap, no duplicate-today risk.
+      const { error: clearError } = await supabase
+        .from("workout_exercises")
+        .delete()
+        .eq("workout_id", id);
+      if (clearError) throw clearError;
+
+      try {
+        for (let i = 0; i < valid.exercises.length; i++) {
+          const ex = valid.exercises[i];
+          const exerciseId = await findOrCreateExercise(user.id, ex.exerciseName);
+          const { data: weData, error: weError } = await supabase
+            .from("workout_exercises")
+            .insert({ workout_id: id, exercise_id: exerciseId, position: i })
+            .select("id")
+            .single();
+          if (weError) throw weError;
+          const workoutExerciseId = (weData as { id: string }).id;
+          const { error: setsError } = await supabase.from("sets").insert(
+            ex.sets.map((s, j) => ({
+              workout_exercise_id: workoutExerciseId,
+              set_number: j + 1,
+              weight_kg: s.weightKg,
+              reps: s.reps,
+            })),
+          );
+          if (setsError) throw setsError;
+        }
+      } catch (e) {
+        throw e;
+      }
+
+      const { data: fresh, error: freshError } = await supabase
+        .from("workouts")
+        .select("id, title, started_at, ended_at, created_at")
+        .eq("id", id)
+        .single();
+      if (freshError) throw freshError;
+      return toSummary(fresh as WorkoutRow);
+    },
+
     async deleteWorkout(id: string): Promise<void> {
       await requireUser();
       // RLS scopes this to the caller's own rows; unknown ids and other

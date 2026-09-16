@@ -92,6 +92,36 @@ describe("LocalStorageRepository", () => {
     await repo.deleteWorkout(a.id); // no throw
   });
 
+  it("updates a workout in place, preserving id and createdAt", async () => {
+    const repo = createLocalStorageRepository(storage);
+    const created = await repo.createWorkout(legsInput("2026-09-15T10:00:00.000Z"));
+    const updated = await repo.updateWorkout(created.id, {
+      title: "Push",
+      startedAt: created.startedAt,
+      exercises: [{ exerciseName: "Bench Press", sets: [{ weightKg: 60, reps: 8 }] }],
+    });
+    expect(updated.id).toBe(created.id);
+    expect(updated.title).toBe("Push");
+    expect(updated.createdAt).toBe(created.createdAt);
+    const detail = await repo.getWorkout(created.id);
+    expect(detail?.exercises).toHaveLength(1);
+    expect(detail?.exercises[0].exercise.exerciseName).toBe("Bench Press");
+    expect(await repo.listWorkouts()).toHaveLength(1);
+  });
+
+  it("update throws on missing id and rejects invalid input", async () => {
+    const repo = createLocalStorageRepository(storage);
+    await expect(
+      repo.updateWorkout("missing", legsInput("2026-09-15T10:00:00.000Z")),
+    ).rejects.toThrow("Workout not found.");
+    const created = await repo.createWorkout(legsInput("2026-09-15T10:00:00.000Z"));
+    await expect(repo.updateWorkout(created.id, { title: "", exercises: [] })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    // Failed update leaves the original intact.
+    expect((await repo.getWorkout(created.id))?.workout.title).toBe("Legs");
+  });
+
   it("rejects invalid input and persists nothing", async () => {
     const repo = createLocalStorageRepository(storage);
     await expect(repo.createWorkout({ title: "", exercises: [] })).rejects.toBeInstanceOf(

@@ -180,6 +180,18 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
   exercise inputs suggest per-day catalogs via native datalist (custom names
   still allowed). Theme re-cut to minimal light: paper beige, ink, white
   cards, clay red; chart/manifest/icons/viewport follow. No DB changes.
+- **BUILT (gym-feedback round):** Log tab is auto-today (date picker
+  removed; create stamps now, edit preserves `startedAt`). Picking a day in
+  create mode drops in the top-5 template with one empty set each + quick-add
+  chips for the rest of the catalog. Save policy: fully-empty rows/exercises
+  skipped as not performed, half-filled rows block with per-field messages
+  (`cleanDraftExercises` in `lib/draft.ts`, unit-tested). Edit-today: `/new`
+  loads today's latest workout and saves via new `updateWorkout(id, input)`
+  on the interface (both repos; id + `createdAt` stable, no migration).
+  Calendar tab (`/calendar`): Monday-first month grid with day icons,
+  tap-a-day detail linking to workout pages; same tokens, no new colors.
+  Verified: 67 unit + 3 live integration (skipped without stack) green,
+  `tsc`/`eslint`/`build` clean, `/calendar` in the route table.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 

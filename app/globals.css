@@ -468,3 +468,63 @@ fieldset.field > legend {
   font-size: 1.4rem;
   line-height: 1.2;
 }
+
+/* Calendar: minimal month grid. Dots carry the meaning (day icons),
+   selected day is ink-filled, today is outlined. Same tokens, no new
+   colors. */
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: 1rem 0;
+}
+
+.cal-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0.25rem 0;
+}
+
+.cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: var(--tap);
+  padding: 0.25rem 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.cal-day-other {
+  opacity: 0.45;
+}
+
+.cal-today {
+  border-color: var(--foreground);
+  border-width: 2px;
+}
+
+.cal-selected {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+
+.cal-num {
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.cal-dots {
+  min-height: 1.1em;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}

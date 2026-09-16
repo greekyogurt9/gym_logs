@@ -1,6 +1,7 @@
 import { todayLocalDate } from "./format";
 import type { WorkoutDetail } from "./types";
 import { browserStorage, type KeyValueStorage } from "./local-storage-repository";
+import { EXERCISE_NAME_MAX, REPS_MAX, WEIGHT_KG_MAX } from "./validation";
 
 // Repeat-draft: cloning a past workout into the /new form. The detail page
 // writes it, /new consumes it on mount (client-only, so no SSR hydration
@@ -42,6 +43,78 @@ export function draftFromDetail(detail: WorkoutDetail): WorkoutDraftState {
 
 export function saveDraft(storage: KeyValueStorage, draft: WorkoutDraftState): void {
   storage.setItem(DRAFT_KEY_V1, JSON.stringify(draft));
+}
+
+export interface CleanedExerciseInput {
+  exerciseName: string;
+  sets: { weightKg: number; reps: number }[];
+}
+
+/**
+ * Log-tab save policy: empty rows (both kg + reps blank) mean "not
+ * performed" and are dropped silently — including whole exercises with no
+ * filled sets. Half-filled rows block the save with per-field messages so
+ * a typo can't silently vanish. Filled rows get range-checked here (same
+ * limits as the validator) with the ORIGINAL form indices, so errors
+ * highlight the right inputs; the repository stays the final boundary.
+ */
+export function cleanDraftExercises(exercises: ExerciseDraftState[]): {
+  cleaned: CleanedExerciseInput[];
+  fieldErrors: Record<string, string>;
+} {
+  const fieldErrors: Record<string, string> = {};
+  const cleaned: CleanedExerciseInput[] = [];
+
+  exercises.forEach((ex, i) => {
+    const name = ex.name.trim();
+    const kept: { weightKg: number; reps: number }[] = [];
+
+    ex.sets.forEach((s, j) => {
+      const wRaw = s.weight.trim();
+      const rRaw = s.reps.trim();
+      const wPath = `exercises[${i}].sets[${j}].weightKg`;
+      const rPath = `exercises[${i}].sets[${j}].reps`;
+      if (wRaw === "" && rRaw === "") return; // not performed — silent
+      if (wRaw === "" || rRaw === "") {
+        if (wRaw === "") fieldErrors[wPath] = "Enter kg, or clear both.";
+        else fieldErrors[rPath] = "Enter reps, or clear both.";
+        return;
+      }
+      const w = Number(wRaw);
+      const r = Number(rRaw);
+      if (
+        !Number.isFinite(w) ||
+        w <= 0 ||
+        w > WEIGHT_KG_MAX ||
+        Math.abs(w * 10 - Math.round(w * 10)) > 1e-9
+      ) {
+        fieldErrors[wPath] =
+          `Weight must be above 0, at most ${WEIGHT_KG_MAX} kg, max 1 decimal.`;
+        return;
+      }
+      if (!Number.isInteger(r) || r < 1 || r > REPS_MAX) {
+        fieldErrors[rPath] = `Reps must be a whole number 1–${REPS_MAX}.`;
+        return;
+      }
+      kept.push({ weightKg: w, reps: r });
+    });
+
+    if (name === "") {
+      if (kept.length > 0) {
+        fieldErrors[`exercises[${i}].exerciseName`] = "Exercise needs a name.";
+      }
+      return; // unnamed + empty = not performed — silent
+    }
+    if (name.length > EXERCISE_NAME_MAX) {
+      fieldErrors[`exercises[${i}].exerciseName`] =
+        `Exercise name must be at most ${EXERCISE_NAME_MAX} characters.`;
+      return;
+    }
+    if (kept.length === 0) return; // named but no sets = not performed — silent
+    cleaned.push({ exerciseName: name, sets: kept });
+  });
+
+  return { cleaned, fieldErrors };
 }
 
 /** Loads and clears the draft. Returns null when absent, corrupt, or server-side. */

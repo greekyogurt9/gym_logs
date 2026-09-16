@@ -70,3 +70,16 @@ export const EXERCISES_BY_TYPE: Record<string, string[]> = {
 export function suggestionsForType(workoutTypeId: string): string[] {
   return EXERCISES_BY_TYPE[workoutTypeId] ?? [];
 }
+
+/** How many exercises auto-appear when a day is picked (Log tab). */
+export const TEMPLATE_EXERCISES_PER_DAY = 5;
+
+/**
+ * Day template: the first 5 catalog names for the day, each with one empty
+ * set. Empty rows mean "not performed" — saving skips them, so picking a
+ * day never creates phantom volume. Custom names stay allowed via the
+ * free-text input + quick-add chips.
+ */
+export function templateExercisesForType(workoutTypeId: string): string[] {
+  return suggestionsForType(workoutTypeId).slice(0, TEMPLATE_EXERCISES_PER_DAY);
+}

@@ -180,6 +180,47 @@ export function createLocalStorageRepository(
       return toSummary(detail);
     },
 
+    async updateWorkout(id: string, input: unknown): Promise<Workout> {
+      const valid = validateNewWorkout(input);
+      const all = loadAll();
+      const idx = all.findIndex((d) => d.workout.id === id);
+      if (idx === -1) throw new Error("Workout not found.");
+      const prev = all[idx];
+      // New child ids keep the update free of id-reuse bugs; the workout
+      // id + createdAt are stable so history/calendar links don't break.
+      const exercises: WorkoutExerciseDetail[] = valid.exercises.map((ex, i) => {
+        const workoutExerciseId = newId();
+        return {
+          exercise: {
+            id: workoutExerciseId,
+            workoutId: id,
+            exerciseName: ex.exerciseName,
+            position: i,
+          },
+          sets: ex.sets.map((s, j) => ({
+            id: newId(),
+            workoutExerciseId,
+            setNumber: j + 1,
+            weightKg: s.weightKg,
+            reps: s.reps,
+          })),
+        };
+      });
+      const detail: WorkoutDetail = {
+        workout: {
+          id,
+          title: valid.title,
+          startedAt: valid.startedAt,
+          endedAt: valid.endedAt,
+          createdAt: prev.workout.createdAt,
+        },
+        exercises,
+      };
+      all[idx] = detail;
+      saveAll(all);
+      return toSummary(detail);
+    },
+
     async deleteWorkout(id: string): Promise<void> {
       const all = loadAll();
       const kept = all.filter((d) => d.workout.id !== id);

@@ -14,8 +14,8 @@
 // activate. skipWaiting() applies updates on next navigation — `git push`
 // is still the whole update story, including for installed users.
 
-const CACHE = "my-gym-buddy-v1";
-const SHELL = ["/", "/new", "/offline"];
+const CACHE = "my-gym-buddy-v2";
+const SHELL = ["/", "/new", "/calendar", "/offline"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

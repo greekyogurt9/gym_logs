@@ -28,3 +28,23 @@ export function dateInputToIso(date: string): string {
   const d = new Date(`${date}T12:00:00`);
   return Number.isNaN(d.getTime()) ? date : d.toISOString();
 }
+
+/** Local calendar key YYYY-MM-DD for a Date (calendar + edit-today). */
+export function localDayKeyFromDate(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** ISO timestamp -> local YYYY-MM-DD, or "" when unparseable. */
+export function localDayKeyFromIso(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return localDayKeyFromDate(d);
+}
+
+/** True when the ISO timestamp falls on today's local calendar day. */
+export function isTodayIso(iso: string): boolean {
+  const key = localDayKeyFromIso(iso);
+  return key !== "" && key === localDayKeyFromDate(new Date());
+}

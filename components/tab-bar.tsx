@@ -14,6 +14,11 @@ const TABS = [
     label: "History",
     match: (p: string) => p === "/" || p.startsWith("/workouts/") || p.startsWith("/exercises/"),
   },
+  {
+    href: "/calendar",
+    label: "Calendar",
+    match: (p: string) => p.startsWith("/calendar"),
+  },
   { href: "/account", label: "You", match: (p: string) => p.startsWith("/account") },
 ];
 
