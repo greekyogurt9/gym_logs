@@ -2,7 +2,9 @@
 
 A minimal workout logger: Workout → Exercise → Set → Weight × Reps.
 
-V2 complete and live in production (app + cloud sync + phone-tested). Full roadmap below.
+V2 + progress tracking live in production (cloud sync + phone-tested + PWA install).
+Current: Log auto-today with Leg/Push/Pull templates, edit-today, History with volume,
+Calendar, per-exercise charts + targets, Repeat. Full roadmap below.
 
 ## Project Goal
 
@@ -66,8 +68,8 @@ PostgreSQL (tables + constraints + RLS policies)
 | Concern | Location | Rule |
 |---|---|---|
 | UI rendering, forms, routing | `app/`, `components/` | No SQL, no `supabase.from()` calls here. Call functions from `lib/`. |
-| Business/data logic | `lib/validation.ts`, `lib/types.ts`, `lib/migrate.ts` | Validation (weight > 0, reps > 0, non-empty names), sorting, shaping data. Pure TypeScript, easily unit-tested. |
-| Supabase queries | `lib/supabase-repository.ts` (only file that calls `supabase.from()`) | Exposes `createSupabaseRepository(client)` returning the shared interface. Client is injected, never imported. |
+| Business/data logic | `lib/validation.ts`, `lib/types.ts`, `lib/migrate.ts`, `lib/progress.ts`, `lib/draft.ts`, `lib/calendar.ts`, `lib/exercises.ts`, `lib/format.ts` | Validation (weight > 0, reps > 0, Leg/Push/Pull titles, targets), chart math, draft cleaning, calendar grid, day catalogs. Pure TypeScript, easily unit-tested. |
+| Supabase queries | `lib/supabase-repository.ts` (only file that calls `supabase.from()`) | Exposes `createSupabaseRepository(client)` returning the shared interface (now incl. `updateWorkout`, `getExerciseHistory`, targets). Client is injected, never imported. |
 | Auth logic (V2) | `lib/supabase/auth.ts`, `lib/supabase/proxy.ts`, `proxy.ts`, `app/auth/callback/route.ts` | Login, logout, cookie session refresh. UI only calls `signInWithGoogle()`, `signOutUser()`, `getSessionEmail()`. |
 | Env configuration | `.env.local` (local, gitignored), Vercel dashboard (prod), `.env.example` (template) | Code reads `process.env.NEXT_PUBLIC_SUPABASE_URL` etc. Never hardcode URLs or keys. |
 
@@ -159,6 +161,12 @@ Validation (V1):
 - At least 1 exercise, at least 1 set per exercise to save.
 - All validation runs in `lib/validation.ts` so V2 reuses it.
 
+Current logging rules (post-10): workout title must be one of Legs/Push/Pull
+(`isWorkoutTypeId`, stored unchanged so legacy custom titles still display —
+no migration). Exercise names are free text guided by per-day catalogs
+(`lib/exercises.ts`, native datalist + quick-add). Targets validated by
+`validateTarget` (weight rules as above + `YYYY-MM-DD` date).
+
 Error handling (V1):
 
 - Storage failure → show message, don't lose form state.
@@ -170,13 +178,31 @@ created in parallel (Phase 2) with RLS ON, but V1 UI does not require auth.
 This keeps V1 deployable to Vercel with zero secrets while the production
 schema already exists and is locked down.
 
-V1 pages (only 3):
+V1 pages (only 3 at the time):
 
 - `/` — history list + "New workout" button.
 - `/new` — create form (workout + exercises + sets).
 - `/workouts/[id]` — detail + delete.
 
 That's it. No edit-workout, no charts, no search in V1.
+
+Current routes (post-10 updates, see Milestones + `UI.md` §9):
+
+- `/` — History with volume lines (`N exercises · M sets · V kg`), Repeat entry via detail.
+- `/new` (Log tab) — auto-today: no date picker, save stamps now; returning same day
+  loads today's log for editing (`updateWorkout`, id + `createdAt` stable).
+  Day picker = Legs/Push/Pull segmented selector; picking a day drops in the
+  top-5 template (one empty set each) + quick-add chips for the rest of the catalog.
+  Empty rows/exercises are skipped as not performed, half-filled rows block with
+  per-field messages (`cleanDraftExercises` in `lib/draft.ts`).
+- `/workouts/[id]` — receipt + total volume + Repeat (via one-shot draft into `/new`)
+  + tappable exercise names + Delete.
+- `/exercises/[name]` — per-exercise progress: SVG line of best top-set (8+ reps only),
+  stats, target card, session table.
+- `/calendar` — Monday-first month grid with Leg/Push/Pull dots, tap-a-day detail.
+- `/account` — email, sign out, migrate status. `/privacy`, `/offline`, `/auth/callback`.
+- Bottom TabBar: Log / History / Calendar / You. Light minimal theme
+  (paper beige `#faf7f1`, ink, white cards, clay red) — see `app/globals.css`.
 
 ## V2 — Accounts & Cloud Data
 
@@ -206,15 +232,26 @@ Why Google via Supabase (not NextAuth / custom JWT)?
 
 Goal: useful tracking, not a fitness platform.
 
-Worth building:
+Built as V3-A (see Milestones + `UI.md` §10):
 
-- Show previous weight/reps inline when logging a set ("last time: 35 × 8").
 - Exercise history page (`/exercises/[name]` — all sets over time).
-- Personal records (max weight, max volume per exercise).
-- Simple progression line (weight over time, no chart library in first pass —
-  table + minimal SVG or later Recharts).
-- "Repeat previous workout" (copy exercises/sets as a new draft).
-- Basic stats: workouts/week, total volume per workout.
+- Simple progression line: hand-rolled SVG, no chart library. Metric is
+  **best top-set weight per session among sets of 8+ reps** (`QUALIFYING_REPS_MIN = 8`
+  in `lib/repository.ts`). Sessions without a qualifying set are skipped, never
+  zero-filled. Table fallback (date, best, volume) under the chart.
+- Per-exercise target: one active target per exercise (`public.targets` table,
+  second migration + RLS; localStorage twin for local mode). Overlay = dashed line
+  + `8 kg to go` / `Hit it` / `Overdue` states.
+- "Repeat previous workout" (copy via one-shot draft into `/new`).
+- Basic stats: total volume per workout, current best · sessions logged · last session
+  per exercise. History cards show `N exercises · M sets · V kg`.
+- Interface additions (both repos): `getExerciseHistory`, `getTarget`/`setTarget`/
+  `deleteTarget`; math in `lib/progress.ts` (`workoutVolume`, chart scaling).
+
+Still parked:
+
+- Previous weight/reps ghost inline while logging (planned in UI-B live session).
+- Personal-record badges, volume-toggle line, estimated-1RM.
 - Better offline: queue writes, retry on reconnect.
 - Real local/cloud sync (timestamps + `updated_at`, last-write-wins first).
 
@@ -288,6 +325,17 @@ RLS ON from the first migration.
   `UNIQUE (workout_exercise_id, set_number)`.
 - Indexes: `idx_sets_we (workout_exercise_id)`.
 - Ownership: inherited from grandparent workout via join.
+
+**6. `targets` — one active target per exercise (second migration
+`20260915135827_create_targets_table.sql`)**
+
+- Purpose: "120 kg for 8 by Dec '26" overlay on the exercise chart.
+- Columns: `id uuid PK`, `user_id uuid NOT NULL FK -> auth.users.id ON DELETE CASCADE`,
+  `exercise_id uuid NOT NULL FK -> exercises.id ON DELETE CASCADE`,
+  `target_weight_kg numeric(6,1) NOT NULL CHECK (> 0 AND <= 1000)`,
+  `target_date date NOT NULL`, `UNIQUE (user_id, exercise_id)`.
+- RLS: direct ownership (`auth.uid() = user_id`) on all four operations,
+  like `exercises`. Verified on remote (6 tables total now).
 
 ```text
 auth.users 1──* profiles
@@ -567,9 +615,10 @@ Keep it proportional to a 1-hour MVP. Three layers, lightest first:
 1. **Type safety (always).** `npx tsc --noEmit` in every phase. Catches most
    bugs (wrong field names, null handling) for free — including a real one in
    Phase 3 where a test passed invalid data to an honestly-typed boundary.
-2. **Unit tests.** Vitest, now 36 tests + 2 live integration tests (`npm test`,
-   <1s hermetic): validation, repository behavior, date helpers, env branching,
-   migration engine against fakes.
+2. **Unit tests.** Vitest, now 67 unit + 3 live integration tests (`npm test`;
+  integration skipped without local stack): validation, repository behavior
+  (incl. `updateWorkout`, history/targets), draft cleaning, calendar grid,
+  day catalogs, date/format helpers, env branching, migration engine against fakes.
 3. **Manual smoke list (every deploy gate).** Create workout → reload → history shows
    it → open detail → delete → confirm gone. Run against local + prod URL.
 4. **Authorization tests (done, Phase 2 + 8).** Raw-SQL RLS checks with two
@@ -615,27 +664,28 @@ a short manual checklist beats a flaky E2E suite for V1.
 
 ## Future Ideas
 
-Only after V1–V3 are stable and used:
+Only after real usage (V1–V3 + post-10 logging UX are stable and used):
 
 - Metric/imperial toggle (kg/lb) with stored canonical unit.
-- Rest timer, RPE field per set.
+- Rest timer (UI-C planned in `UI.md`: quiet 90s countdown chip on set-complete), RPE field per set.
+- Live session screen (UI-B planned: per-set ✓, ghost prefill, autosave-as-you-go).
 - CSV export of history.
-- Seed library of common exercises (still per-user rows, just pre-inserted).
+- Volume-toggle line / estimated-1RM / PR badges on exercise charts.
 
 Each needs its own migration + validation update + smoke test. No silent schema edits.
 
 ## What We Are Explicitly NOT Building
 
-- Fancy UI, animations, theming system, marketing pages.
-- Dashboards with charts in V1 (tables first).
+- Marketing pages, animations, multi-theme system (one light minimal theme: paper/ink/white).
 - Social features (friends, feeds, sharing).
 - AI coaching, recommendations, auto-programming.
 - Payments, teams, roles, admin panel.
 - Custom backend framework, ORM, GraphQL, monorepo tooling.
-- Multi-language, multi-unit complexity in V1 (kg only, English only).
+- Multi-language, multi-unit complexity (kg only, English only).
 
 If a request doesn't serve "record weight × reps in under 30 seconds in the gym",
-it is out of scope until V3 is done.
+it waits. Charts + targets shipped only because they answer "am I lifting more?"
+in one glance — dashboards beyond that stay out.
 
 ## Development Milestones
 
@@ -647,7 +697,7 @@ it is out of scope until V3 is done.
   `supabase db reset` passes locally.
 - [x] **Phase 3 — Backend/data layer (V1)** — `lib/validation.ts` (hand-rolled, zero deps),
   `LocalStorageRepository` implementing the interface, Vitest unit tests, `tsc` clean.
-  (Suite has since grown to 36 unit + 2 live integration tests.)
+  (Suite has since grown to 67 unit + 3 live integration tests.)
 - [x] **Phase 4 — Minimal UI (V1)** — `/`, `/new`, `/workouts/[id]`, create/list/detail/delete,
   validation messages, empty states. Route smoke passes (`tsc` + `lint` clean).
 - [x] **Phase 5 — Testing (V1 gate)** — unit tests passing + `npm run build` +
@@ -671,14 +721,34 @@ it is out of scope until V3 is done.
   `public/icons/`, minimal service worker (shell precache, offline fallback),
   theme-color + iOS touch icon, `/privacy` page. Verified: manifest valid,
   SW/offline/icons serve, PWA meta present. No behavior changes.
+- [x] **Phase 11 — UI-A shell + V3-A progress (shipped)** — bottom TabBar
+  (Log/History/You), `/account`, history volume lines, detail volume + Repeat
+  via draft + tappable exercises, `/exercises/[name]` SVG chart (best top-set,
+  8+ reps) + stats + target card + session table. Interface grew
+  `getExerciseHistory`/`getTarget`/`setTarget`/`deleteTarget` (both repos),
+  `validateTarget`, second migration (`targets` + RLS, pushed + verified remote).
+  54 unit + 3 integration green at the time.
+- [x] **Phase 12 — Guided days + light theme (shipped)** — free-text title replaced
+  by Legs/Push/Pull selector (stored unchanged, no migration), per-day catalogs
+  (`lib/exercises.ts`) via datalist, custom names still allowed. Re-theme to
+  minimal light (paper beige, ink, white cards, clay red) across CSS/chart/
+  manifest/icons. 59 unit + 3 integration green at the time.
+- [x] **Phase 13 — Gym-feedback logging round (shipped, current HEAD)** — Log tab
+  auto-today (no date picker; create stamps now, edit preserves `startedAt`),
+  day templates (top-5 + quick-add chips), `cleanDraftExercises` save policy
+  (`lib/draft.ts`), edit-today via `updateWorkout` (both repos, no migration),
+  Calendar tab (`/calendar`, Monday-first grid + day detail). 67 unit + 3 live
+  integration green, `tsc`/`eslint`/`build` clean. Details in `UI.md` §9.
 
 Phases 0–7 = V1 (usable, deployable, no login).
 Phases 8–9 = V2 (accounts + personal cloud data, live in production).
-Phase 10 = installable distribution without a store. No Phase 11: a Play Store
+Phase 10 = installable distribution without a store. No Store listing: a Play Store
 listing was evaluated and parked — personal sharing needs nothing more.
-V3 progress-tracking features stay parked until real usage demands them.
+Phases 11–13 = V3-A progress + guided logging UX, shipped on user feedback.
+Remaining from `UI.md`: UI-B live session + UI-C rest timer stay planned, untouched.
 
 ---
 
-_Phase 10 complete: the link installs like an app. The project is done — V3 ideas
-stay parked until real usage demands them._
+_Current as of `e58f5e0` (auto-today + templates + edit-today + calendar):
+67 unit + 3 integration tests, `main` clean and deployed. The project is in
+friends-use shape — use it, collect the v2 improvement list, then build._
