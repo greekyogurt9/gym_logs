@@ -148,6 +148,7 @@ export default function NewWorkoutPage() {
   const [todayState, setTodayState] = useState<"checking" | "ready">("checking");
   const [todayCount, setTodayCount] = useState(0);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
 
   // Mount once: Repeat draft wins; otherwise load today's latest (if any)
   // into edit mode. Loaded rows start LOCKED so old inputs can't be
@@ -257,13 +258,13 @@ export default function NewWorkoutPage() {
     );
   }
 
-  function moveExercise(i: number, dir: -1 | 1) {
+  function moveExerciseTo(from: number, to: number) {
+    if (from === to) return;
     setExercises((prev) => {
-      const j = i + dir;
-      if (j < 0 || j >= prev.length) return prev;
+      if (from < 0 || from >= prev.length || to < 0 || to >= prev.length) return prev;
       const next = [...prev];
-      const [item] = next.splice(i, 1);
-      next.splice(j, 0, item);
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
       return next;
     });
     // Indices shifted — stale per-field errors would highlight the wrong row.
@@ -275,15 +276,9 @@ export default function NewWorkoutPage() {
   }
 
   function onDropExercise(i: number) {
-    setExercises((prev) => {
-      if (dragIndex === null || dragIndex === i) return prev;
-      const next = [...prev];
-      const [item] = next.splice(dragIndex, 1);
-      next.splice(i, 0, item);
-      return next;
-    });
+    if (dragIndex !== null) moveExerciseTo(dragIndex, i);
     setDragIndex(null);
-    setFieldErrors({});
+    setDropTarget(null);
   }
 
   async function onDeleteToday() {
@@ -498,25 +493,48 @@ export default function NewWorkoutPage() {
         {exercises.map((ex, i) => (
           <section
             key={ex.key}
-            className={`card hv-card${ex.locked ? " is-locked" : ""}${dragIndex === i ? " is-dragging" : ""}`}
+            data-ex-index={i}
+            className={`card hv-card${ex.locked ? " is-locked" : ""}${dragIndex === i ? " is-dragging" : ""}${dropTarget === i && dragIndex !== null && dropTarget !== dragIndex ? " is-drop-target" : ""}`}
             aria-label={`Exercise ${i + 1}${ex.name ? `: ${ex.name}` : ""}`}
             onDragOver={(e) => {
               if (dragIndex !== null) e.preventDefault();
             }}
             onDrop={() => onDropExercise(i)}
           >
-            {/* Title row: handle + name + lock + remove. Name is a heading,
-                not a grid cell — the Hevy/Strong standard. */}
+            {/* Title row: hamburger grip + heading name + lock + dustbin.
+                Single drag path (hold the grip to slide); no arrow buttons. */}
             <div className="hv-title">
               <span
                 className="hv-grip"
-                title="Drag to reorder (or use ↑ ↓ below)"
-                aria-label={`Reorder exercise ${i + 1}`}
+                title="Hold and drag to reorder"
+                aria-label={`Hold and drag to reorder exercise ${i + 1}`}
                 draggable
                 onDragStart={() => onDragStart(i)}
-                onDragEnd={() => setDragIndex(null)}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDropTarget(null);
+                }}
+                onTouchStart={() => onDragStart(i)}
+                onTouchMove={(e) => {
+                  const t = e.touches[0];
+                  if (!t) return;
+                  const el = document
+                    .elementFromPoint(t.clientX, t.clientY)
+                    ?.closest?.("[data-ex-index]");
+                  if (el) {
+                    const idx = Number((el as HTMLElement).dataset.exIndex);
+                    if (Number.isFinite(idx)) setDropTarget(idx);
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (dragIndex !== null && dropTarget !== null) {
+                    moveExerciseTo(dragIndex, dropTarget);
+                  }
+                  setDragIndex(null);
+                  setDropTarget(null);
+                }}
               >
-                ⋮⋮
+                ☰
               </span>
               <input
                 className="hv-name"
@@ -549,8 +567,8 @@ export default function NewWorkoutPage() {
               <button
                 type="button"
                 className="hv-del-ex"
-                aria-label={`Remove exercise ${i + 1}`}
-                title="Remove exercise"
+                aria-label={`Delete exercise ${i + 1}`}
+                title="Delete exercise"
                 onClick={() => {
                   setExercises((prev) =>
                     prev.length === 1 ? [blankExercise()] : prev.filter((_, idx) => idx !== i),
@@ -558,14 +576,14 @@ export default function NewWorkoutPage() {
                   setFieldErrors({});
                 }}
               >
-                ✕
+                🗑️
               </button>
             </div>
             {fieldErrors[`exercises[${i}].exerciseName`] && (
               <p className="field-error hv-err">{fieldErrors[`exercises[${i}].exerciseName`]}</p>
             )}
 
-            {/* Meta row: weight type + previous best + reorder fallback. */}
+            {/* Meta row: weight type + previous best. Reorder is grip-only. */}
             <div className="hv-meta">
               <div className="hv-pill" role="group" aria-label={`Weight type for exercise ${i + 1}`}>
                 <button
@@ -593,26 +611,6 @@ export default function NewWorkoutPage() {
                 {ex.weightMode === "per_side" ? "DB · each hand" : "BB · combined"}
               </span>
               <PrevHint name={ex.name} disabled={ex.locked} onFill={(kg) => fillEmptyKg(i, kg)} />
-              <span className="hv-move">
-                <button
-                  type="button"
-                  aria-label={`Move exercise ${i + 1} up`}
-                  title="Move up"
-                  disabled={i === 0}
-                  onClick={() => moveExercise(i, -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Move exercise ${i + 1} down`}
-                  title="Move down"
-                  disabled={i === exercises.length - 1}
-                  onClick={() => moveExercise(i, 1)}
-                >
-                  ↓
-                </button>
-              </span>
             </div>
 
             {/* Set table: the compact standard. Columns align down the card. */}
@@ -660,8 +658,8 @@ export default function NewWorkoutPage() {
                     <button
                       type="button"
                       className="hv-del-set"
-                      aria-label={`Remove set ${j + 1} from exercise ${i + 1}`}
-                      title="Remove set"
+                      aria-label={`Delete set ${j + 1} from exercise ${i + 1}`}
+                      title="Delete set"
                       disabled={ex.locked || ex.sets.length === 1}
                       onClick={() =>
                         setExercises((prev) =>
@@ -673,7 +671,7 @@ export default function NewWorkoutPage() {
                         )
                       }
                     >
-                      ✕
+                      🗑️
                     </button>
                     {(fieldErrors[wPath] || fieldErrors[rPath]) && (
                       <span className="hv-row-err" role="alert">
