@@ -109,6 +109,27 @@ describe("LocalStorageRepository", () => {
     expect(await repo.listWorkouts()).toHaveLength(1);
   });
 
+  it("round-trips per-side mode and doubles its history volume", async () => {
+    const repo = createLocalStorageRepository(storage);
+    const created = await repo.createWorkout({
+      title: "Push",
+      startedAt: "2026-09-15T10:00:00.000Z",
+      exercises: [
+        {
+          exerciseName: "Incline Dumbbell Press",
+          weightMode: "per_side",
+          sets: [{ weightKg: 15, reps: 10 }],
+        },
+      ],
+    });
+    const detail = await repo.getWorkout(created.id);
+    expect(detail?.exercises[0].exercise.weightMode).toBe("per_side");
+    const history = await repo.getExerciseHistory("Incline Dumbbell Press");
+    expect(history).toHaveLength(1);
+    expect(history[0].bestTopSetKg).toBe(15);
+    expect(history[0].totalVolumeKg).toBe(300);
+  });
+
   it("update throws on missing id and rejects invalid input", async () => {
     const repo = createLocalStorageRepository(storage);
     await expect(

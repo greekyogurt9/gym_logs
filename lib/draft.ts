@@ -1,5 +1,6 @@
 import { todayLocalDate } from "./format";
-import type { WorkoutDetail } from "./types";
+import type { WeightMode, WorkoutDetail } from "./types";
+import { normalizeWeightMode } from "./types";
 import { browserStorage, type KeyValueStorage } from "./local-storage-repository";
 import { EXERCISE_NAME_MAX, REPS_MAX, WEIGHT_KG_MAX } from "./validation";
 
@@ -17,6 +18,8 @@ export interface SetDraftState {
 
 export interface ExerciseDraftState {
   name: string;
+  /** Optional so pre-toggle drafts/tests still typecheck — read as "total". */
+  weightMode?: WeightMode;
   sets: SetDraftState[];
 }
 
@@ -34,6 +37,7 @@ export function draftFromDetail(detail: WorkoutDetail): WorkoutDraftState {
       .sort((a, b) => a.exercise.position - b.exercise.position)
       .map((e) => ({
         name: e.exercise.exerciseName,
+        weightMode: normalizeWeightMode(e.exercise.weightMode),
         sets: [...e.sets]
           .sort((a, b) => a.setNumber - b.setNumber)
           .map((s) => ({ weight: String(s.weightKg), reps: String(s.reps) })),
@@ -47,6 +51,7 @@ export function saveDraft(storage: KeyValueStorage, draft: WorkoutDraftState): v
 
 export interface CleanedExerciseInput {
   exerciseName: string;
+  weightMode: WeightMode;
   sets: { weightKg: number; reps: number }[];
 }
 
@@ -67,6 +72,9 @@ export function cleanDraftExercises(exercises: ExerciseDraftState[]): {
 
   exercises.forEach((ex, i) => {
     const name = ex.name.trim();
+    const weightMode = normalizeWeightMode(
+      (ex as { weightMode?: unknown }).weightMode,
+    );
     const kept: { weightKg: number; reps: number }[] = [];
 
     ex.sets.forEach((s, j) => {
@@ -111,7 +119,7 @@ export function cleanDraftExercises(exercises: ExerciseDraftState[]): {
       return;
     }
     if (kept.length === 0) return; // named but no sets = not performed — silent
-    cleaned.push({ exerciseName: name, sets: kept });
+    cleaned.push({ exerciseName: name, weightMode, sets: kept });
   });
 
   return { cleaned, fieldErrors };
@@ -140,7 +148,16 @@ export function takeDraft(storage?: KeyValueStorage): WorkoutDraftState | null {
       typeof (parsed as Record<string, unknown>)["title"] === "string" &&
       Array.isArray((parsed as Record<string, unknown>)["exercises"])
     ) {
-      return parsed as WorkoutDraftState;
+      const draft = parsed as WorkoutDraftState;
+      // Backward compat: drafts saved before the per-side toggle lack it.
+      draft.exercises = draft.exercises.map((e) => ({
+        ...e,
+        weightMode: normalizeWeightMode(
+          (e as { weightMode?: unknown }).weightMode,
+        ),
+        sets: Array.isArray(e.sets) ? e.sets : [],
+      }));
+      return draft;
     }
   } catch {
     // Corrupt draft: already removed above. Fall through to null.

@@ -10,7 +10,7 @@ describe("cleanDraftExercises", () => {
     ]);
     expect(fieldErrors).toEqual({});
     expect(cleaned).toEqual([
-      { exerciseName: "Squat", sets: [{ weightKg: 60, reps: 8 }] },
+      { exerciseName: "Squat", weightMode: "total", sets: [{ weightKg: 60, reps: 8 }] },
     ]);
   });
 
@@ -44,5 +44,21 @@ describe("cleanDraftExercises", () => {
     expect(fieldErrors["exercises[0].sets[0].weightKg"]).toBeDefined();
     expect(fieldErrors["exercises[1].sets[0].reps"]).toBeDefined();
     expect(fieldErrors["exercises[2].sets[0].weightKg"]).toMatch(/decimal/);
+  });
+
+  it("preserves per-side mode and defaults missing mode to total", () => {
+    const { cleaned, fieldErrors } = cleanDraftExercises([
+      { name: "Incline Dumbbell Press", weightMode: "per_side", sets: [{ weight: "15", reps: "10" }] },
+      { name: "Squat", sets: [{ weight: "60", reps: "8" }] },
+    ]);
+    expect(fieldErrors).toEqual({});
+    expect(cleaned).toEqual([
+      {
+        exerciseName: "Incline Dumbbell Press",
+        weightMode: "per_side",
+        sets: [{ weightKg: 15, reps: 10 }],
+      },
+      { exerciseName: "Squat", weightMode: "total", sets: [{ weightKg: 60, reps: 8 }] },
+    ]);
   });
 });

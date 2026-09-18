@@ -2,7 +2,9 @@ import type {
   NewExerciseInput,
   NewSetInput,
   NewWorkoutInput,
+  WeightMode,
 } from "./types";
+import { normalizeWeightMode } from "./types";
 import { WORKOUT_TYPES, isWorkoutTypeId } from "./exercises";
 
 export interface TargetInput {
@@ -135,6 +137,7 @@ function validateExercise(
   }
   let name = "";
   let ok = true;
+  let weightMode: WeightMode = "total";
 
   const n = v["exerciseName"];
   if (typeof n !== "string" || n.trim().length === 0) {
@@ -148,6 +151,17 @@ function validateExercise(
     ok = false;
   } else {
     name = n.trim();
+  }
+
+  const wm = v["weightMode"];
+  if (wm !== undefined && wm !== "total" && wm !== "per_side") {
+    issues.push({
+      path: `${path}.weightMode`,
+      message: 'Weight type must be "total" or "per_side".',
+    });
+    ok = false;
+  } else {
+    weightMode = normalizeWeightMode(wm);
   }
 
   const setsRaw = v["sets"];
@@ -169,7 +183,7 @@ function validateExercise(
     });
   }
 
-  return ok ? { exerciseName: name, sets } : null;
+  return ok ? { exerciseName: name, weightMode, sets } : null;
 }
 
 export function validateNewWorkout(input: unknown): NewWorkoutInput {

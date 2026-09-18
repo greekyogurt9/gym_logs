@@ -3,7 +3,7 @@ import type {
   WorkoutDetail,
   WorkoutExerciseDetail,
 } from "./types";
-import { LOCAL_STORAGE_KEY_V1 } from "./types";
+import { LOCAL_STORAGE_KEY_V1, normalizeWeightMode, weightModeMultiplier } from "./types";
 import type {
   ExerciseHistoryPoint,
   ExerciseTarget,
@@ -115,6 +115,13 @@ export function createLocalStorageRepository(
       parsed = null;
     }
     if (Array.isArray(parsed) && parsed.every(isWorkoutDetail)) {
+      // Backward compat: rows saved before the per-side toggle lack
+      // weightMode — read them as "total" so old logs keep working.
+      for (const d of parsed as WorkoutDetail[]) {
+        for (const e of d.exercises) {
+          e.exercise.weightMode = normalizeWeightMode(e.exercise.weightMode);
+        }
+      }
       return parsed;
     }
     // Quarantine, don't delete: the next save would otherwise overwrite
@@ -154,6 +161,7 @@ export function createLocalStorageRepository(
             workoutId,
             exerciseName: ex.exerciseName,
             position: i,
+            weightMode: normalizeWeightMode(ex.weightMode),
           },
           sets: ex.sets.map((s, j) => ({
             id: newId(),
@@ -196,6 +204,7 @@ export function createLocalStorageRepository(
             workoutId: id,
             exerciseName: ex.exerciseName,
             position: i,
+            weightMode: normalizeWeightMode(ex.weightMode),
           },
           sets: ex.sets.map((s, j) => ({
             id: newId(),
@@ -236,12 +245,15 @@ export function createLocalStorageRepository(
           d.exercises
             .filter((e) => e.exercise.exerciseName === name)
             .map((e) => {
+              const mult = weightModeMultiplier(
+                normalizeWeightMode(e.exercise.weightMode),
+              );
               const qualifying = e.sets.filter((s) => s.reps >= QUALIFYING_REPS_MIN);
               return {
                 date: d.workout.startedAt,
                 bestTopSetKg:
                   qualifying.length > 0 ? Math.max(...qualifying.map((s) => s.weightKg)) : null,
-                totalVolumeKg: e.sets.reduce((n, s) => n + s.weightKg * s.reps, 0),
+                totalVolumeKg: e.sets.reduce((n, s) => n + s.weightKg * s.reps * mult, 0),
               };
             }),
         )

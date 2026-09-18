@@ -161,4 +161,28 @@ describe("validateNewWorkout", () => {
       expect(paths).toContain("exercises[0].sets[0].reps");
     }
   });
+
+  it("defaults missing weightMode to total and accepts per_side", () => {
+    const def = validateNewWorkout(validInput());
+    expect(def.exercises[0].weightMode).toBe("total");
+    const per = validateNewWorkout({
+      ...validInput(),
+      exercises: [
+        { exerciseName: "Squat", weightMode: "per_side", sets: [{ weightKg: 15, reps: 10 }] },
+      ],
+    });
+    expect(per.exercises[0].weightMode).toBe("per_side");
+  });
+
+  it("rejects unknown weightMode", () => {
+    expectInvalid(
+      {
+        ...validInput(),
+        exercises: [
+          { exerciseName: "Squat", weightMode: "dumbbell", sets: [{ weightKg: 15, reps: 10 }] },
+        ],
+      },
+      "weightMode",
+    );
+  });
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import type { Workout, WorkoutDetail, WorkoutExerciseDetail } from "./types";
+import type { Workout, WorkoutDetail, WorkoutExerciseDetail, WeightMode } from "./types";
+import { normalizeWeightMode, weightModeMultiplier } from "./types";
 import type {
   ExerciseHistoryPoint,
   ExerciseTarget,
@@ -47,6 +48,7 @@ interface WorkoutExerciseRow {
   workout_id: string;
   exercise_id: string;
   position: number;
+  weight_mode?: string | null;
   exercises: NestedExercise | NestedExercise[] | null;
 }
 
@@ -96,6 +98,36 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
     return (created as { id: string }).id;
   }
 
+  // workout_exercises.weight_mode is new. Try it first; when the remote DB
+  // predates the migration, retry without the column so old backends keep
+  // working (rows read back as "total").
+  async function insertWorkoutExercise(
+    workoutId: string,
+    exerciseId: string,
+    position: number,
+    weightMode: WeightMode,
+  ): Promise<string> {
+    const withMode = await supabase
+      .from("workout_exercises")
+      .insert({
+        workout_id: workoutId,
+        exercise_id: exerciseId,
+        position,
+        weight_mode: normalizeWeightMode(weightMode),
+      })
+      .select("id")
+      .single();
+    if (!withMode.error) return (withMode.data as { id: string }).id;
+    if (!/weight_mode/i.test(withMode.error.message)) throw withMode.error;
+    const legacy = await supabase
+      .from("workout_exercises")
+      .insert({ workout_id: workoutId, exercise_id: exerciseId, position })
+      .select("id")
+      .single();
+    if (legacy.error) throw legacy.error;
+    return (legacy.data as { id: string }).id;
+  }
+
   return {
     async listWorkouts(): Promise<Workout[]> {
       await requireUser();
@@ -121,13 +153,30 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
       if (!workoutData) return null;
       const workout = workoutData as WorkoutRow;
 
-      const { data: weData, error: weError } = await supabase
-        .from("workout_exercises")
-        .select("id, workout_id, exercise_id, position, exercises ( id, name )")
-        .eq("workout_id", id)
-        .order("position", { ascending: true });
-      if (weError) throw weError;
-      const weRows = (weData ?? []) as WorkoutExerciseRow[];
+      // weight_mode is new (per-side toggle migration). Old DBs without the
+      // column error here — fall back to the pre-toggle select so reads keep
+      // working until `supabase db push` lands the migration.
+      let weData: unknown = null;
+      {
+        const withMode = await supabase
+          .from("workout_exercises")
+          .select("id, workout_id, exercise_id, position, weight_mode, exercises ( id, name )")
+          .eq("workout_id", id)
+          .order("position", { ascending: true });
+        if (withMode.error && /weight_mode/i.test(withMode.error.message)) {
+          const legacy = await supabase
+            .from("workout_exercises")
+            .select("id, workout_id, exercise_id, position, exercises ( id, name )")
+            .eq("workout_id", id)
+            .order("position", { ascending: true });
+          if (legacy.error) throw legacy.error;
+          weData = legacy.data;
+        } else {
+          if (withMode.error) throw withMode.error;
+          weData = withMode.data;
+        }
+      }
+      const weRows = ((weData ?? []) as WorkoutExerciseRow[]);
 
       let setRows: SetRow[] = [];
       if (weRows.length > 0) {
@@ -151,6 +200,7 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
             workoutId: we.workout_id,
             exerciseName: nested?.name ?? "(deleted exercise)",
             position: we.position,
+            weightMode: normalizeWeightMode(we.weight_mode),
           },
           sets: setRows
             .filter((s) => s.workout_exercise_id === we.id)
@@ -188,13 +238,12 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
         for (let i = 0; i < valid.exercises.length; i++) {
           const ex = valid.exercises[i];
           const exerciseId = await findOrCreateExercise(user.id, ex.exerciseName);
-          const { data: weData, error: weError } = await supabase
-            .from("workout_exercises")
-            .insert({ workout_id: workout.id, exercise_id: exerciseId, position: i })
-            .select("id")
-            .single();
-          if (weError) throw weError;
-          const workoutExerciseId = (weData as { id: string }).id;
+          const workoutExerciseId = await insertWorkoutExercise(
+            workout.id,
+            exerciseId,
+            i,
+            normalizeWeightMode(ex.weightMode),
+          );
           const { error: setsError } = await supabase.from("sets").insert(
             ex.sets.map((s, j) => ({
               workout_exercise_id: workoutExerciseId,
@@ -256,13 +305,12 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
         for (let i = 0; i < valid.exercises.length; i++) {
           const ex = valid.exercises[i];
           const exerciseId = await findOrCreateExercise(user.id, ex.exerciseName);
-          const { data: weData, error: weError } = await supabase
-            .from("workout_exercises")
-            .insert({ workout_id: id, exercise_id: exerciseId, position: i })
-            .select("id")
-            .single();
-          if (weError) throw weError;
-          const workoutExerciseId = (weData as { id: string }).id;
+          const workoutExerciseId = await insertWorkoutExercise(
+            id,
+            exerciseId,
+            i,
+            normalizeWeightMode(ex.weightMode),
+          );
           const { error: setsError } = await supabase.from("sets").insert(
             ex.sets.map((s, j) => ({
               workout_exercise_id: workoutExerciseId,
@@ -309,16 +357,37 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
       if (!exData) return [];
       const exerciseId = (exData as { id: string }).id;
 
-      const { data: weData, error: weError } = await supabase
+      const withModeHistory = await supabase
         .from("workout_exercises")
-        .select("id, workout_id, workouts!inner ( started_at )")
+        .select("id, workout_id, weight_mode, workouts!inner ( started_at )")
         .eq("exercise_id", exerciseId);
-      if (weError) throw weError;
-      const links = (weData ?? []) as {
+      let historyLinks: {
         id: string;
         workout_id: string;
+        weight_mode?: string | null;
         workouts: { started_at: string } | { started_at: string }[] | null;
       }[];
+      if (withModeHistory.error && /weight_mode/i.test(withModeHistory.error.message)) {
+        const legacy = await supabase
+          .from("workout_exercises")
+          .select("id, workout_id, workouts!inner ( started_at )")
+          .eq("exercise_id", exerciseId);
+        if (legacy.error) throw legacy.error;
+        historyLinks = (legacy.data ?? []) as {
+          id: string;
+          workout_id: string;
+          workouts: { started_at: string } | { started_at: string }[] | null;
+        }[];
+      } else {
+        if (withModeHistory.error) throw withModeHistory.error;
+        historyLinks = (withModeHistory.data ?? []) as {
+          id: string;
+          workout_id: string;
+          weight_mode?: string | null;
+          workouts: { started_at: string } | { started_at: string }[] | null;
+        }[];
+      }
+      const links = historyLinks;
       if (links.length === 0) return [];
 
       const { data: setData, error: setError } = await supabase
@@ -335,11 +404,18 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
         reps: number;
       }[];
 
-      const byWorkout = new Map<string, { date: string; sets: { weightKg: number; reps: number }[] }>();
+      const byWorkout = new Map<
+        string,
+        { date: string; mult: number; sets: { weightKg: number; reps: number }[] }
+      >();
       for (const link of links) {
         const nested = Array.isArray(link.workouts) ? link.workouts[0] : link.workouts;
         if (!nested) continue;
-        byWorkout.set(link.id, { date: nested.started_at, sets: [] });
+        byWorkout.set(link.id, {
+          date: nested.started_at,
+          mult: weightModeMultiplier(normalizeWeightMode(link.weight_mode)),
+          sets: [],
+        });
       }
       for (const s of rows) {
         byWorkout
@@ -347,13 +423,13 @@ export function createSupabaseRepository(supabase: SupabaseClient): WorkoutRepos
           ?.sets.push({ weightKg: s.weight_kg, reps: s.reps });
       }
       return [...byWorkout.values()]
-        .map(({ date, sets }) => {
+        .map(({ date, mult, sets }) => {
           const qualifying = sets.filter((s) => s.reps >= QUALIFYING_REPS_MIN);
           return {
             date,
             bestTopSetKg:
               qualifying.length > 0 ? Math.max(...qualifying.map((s) => s.weightKg)) : null,
-            totalVolumeKg: sets.reduce((n, s) => n + s.weightKg * s.reps, 0),
+            totalVolumeKg: sets.reduce((n, s) => n + s.weightKg * s.reps * mult, 0),
           };
         })
         .sort((a, b) => a.date.localeCompare(b.date));

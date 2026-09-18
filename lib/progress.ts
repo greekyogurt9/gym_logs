@@ -1,5 +1,6 @@
 import type { ExerciseHistoryPoint, ExerciseTarget } from "./repository";
 import type { WorkoutDetail } from "./types";
+import { normalizeWeightMode, weightModeMultiplier } from "./types";
 
 // Pure progress math for the "am I lifting higher?" chart. No storage, no
 // dates parsing beyond ISO strings — every function here is trivially
@@ -28,7 +29,16 @@ export type TargetStatus =
 /** Total kg lifted in one workout (Σ weight × reps). Shown on history cards. */
 export function workoutVolume(detail: WorkoutDetail): number {
   return detail.exercises.reduce(
-    (n, e) => n + e.sets.reduce((m, s) => m + s.weightKg * s.reps, 0),
+    (n, e) =>
+      n +
+      e.sets.reduce(
+        (m, s) =>
+          m +
+          s.weightKg *
+            s.reps *
+            weightModeMultiplier(normalizeWeightMode(e.exercise.weightMode)),
+        0,
+      ),
     0,
   );
 }

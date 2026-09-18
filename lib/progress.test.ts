@@ -127,6 +127,26 @@ describe("workoutVolume", () => {
       }),
     ).toBe(580);
   });
+
+  it("doubles per-side volume (both limbs move)", () => {
+    expect(
+      workoutVolume({
+        workout: { id: "w", title: "Push", startedAt: "2026-09-10", createdAt: "2026-09-10" },
+        exercises: [
+          {
+            exercise: {
+              id: "e1",
+              workoutId: "w",
+              exerciseName: "Incline Dumbbell Press",
+              position: 0,
+              weightMode: "per_side",
+            },
+            sets: [{ id: "s1", workoutExerciseId: "e1", setNumber: 1, weightKg: 15, reps: 10 }],
+          },
+        ],
+      }),
+    ).toBe(300);
+  });
 });
 
 describe("shortDate", () => {

@@ -340,14 +340,208 @@ a.small {
 }
 
 .set-num {
-  padding-top: 2rem;
   min-width: 1.25rem;
   text-align: center;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .set-row .link-danger {
   margin-top: 1.9rem;
+}
+
+/* --- Compact log cards: first set inline with the name, later sets align
+   kg-under-kg / reps-under-reps. One grid, no per-row labels. --- */
+
+.ex-card {
+  padding: 0.75rem;
+}
+
+.ex-card.ex-locked {
+  opacity: 0.92;
+}
+
+.ex-card.ex-locked input:disabled {
+  background: transparent;
+  border-style: dashed;
+  color: var(--foreground);
+  opacity: 1;
+  -webkit-text-fill-color: var(--foreground);
+}
+
+.ex-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.drag-handle {
+  cursor: grab;
+  padding: 0.5rem 0.35rem;
+  min-width: 44px;
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  touch-action: none;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.ex-pos {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.ex-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.icon-btn {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 0.5rem;
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lock-btn {
+  font-weight: 700;
+  border-color: var(--border);
+}
+
+.lock-btn.is-locked {
+  border-color: var(--foreground);
+}
+
+.compact-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) var(--tap);
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 0 0.25rem;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) var(--tap);
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.compact-row:last-of-type {
+  margin-bottom: 0.25rem;
+}
+
+.compact-name input,
+.compact-field input {
+  font-size: 16px;
+  padding: 0.6rem 0.5rem;
+  min-height: var(--tap);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: inherit;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-name .set-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--tap);
+  padding-right: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.compact-x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compact-x .icon-btn {
+  min-width: var(--tap);
+  border-color: transparent;
+  color: var(--danger);
+}
+
+.compact-x .set-num {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+}
+
+.compact-errors {
+  grid-column: 1 / -1;
+}
+
+.ex-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mini-segment {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mini-segment button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0.5rem 0.75rem;
+  min-height: var(--tap);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.mini-segment button.mini-on {
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 700;
+}
+
+.mini-segment button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ex-foot .muted {
+  margin-right: auto;
 }
 
 .actions {

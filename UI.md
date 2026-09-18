@@ -180,18 +180,25 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
   exercise inputs suggest per-day catalogs via native datalist (custom names
   still allowed). Theme re-cut to minimal light: paper beige, ink, white
   cards, clay red; chart/manifest/icons/viewport follow. No DB changes.
-- **BUILT (gym-feedback round):** Log tab is auto-today (date picker
-  removed; create stamps now, edit preserves `startedAt`). Picking a day in
-  create mode drops in the top-5 template with one empty set each + quick-add
-  chips for the rest of the catalog. Save policy: fully-empty rows/exercises
-  skipped as not performed, half-filled rows block with per-field messages
-  (`cleanDraftExercises` in `lib/draft.ts`, unit-tested). Edit-today: `/new`
-  loads today's latest workout and saves via new `updateWorkout(id, input)`
-  on the interface (both repos; id + `createdAt` stable, no migration).
-  Calendar tab (`/calendar`): Monday-first month grid with day icons,
-  tap-a-day detail linking to workout pages; same tokens, no new colors.
-  Verified: 67 unit + 3 live integration (skipped without stack) green,
-  `tsc`/`eslint`/`build` clean, `/calendar` in the route table.
+- **BUILT (compact + per-side + lock + reorder round):** Log cards are
+  compact — exercise name + set 1 on one grid row, sets 2+ align
+  kg-under-kg / reps-under-reps with one header. Per-exercise weight toggle
+  `Total` (barbell/machine, both hands share one load) vs `Per side`
+  (dumbbell/unilateral, kg is one hand — e.g. two 15s logged as 15);
+  volume ×2 for per-side (both limbs), best stays the entered per-side
+  number. Data: `weightMode` on `WorkoutExercise`/`NewExerciseInput`
+  (optional on reads, defaults total), validator + `cleanDraftExercises`
+  carry it, both repos persist it, third migration
+  `20260918120000_add_weight_mode.sql` (`weight_mode` default total),
+  Supabase reads/writes fall back pre-migration. Lock tick per exercise
+  (✓ locks, ✏️ unlocks; today's loaded rows start locked, Remove/reorder
+  stay enabled). Reorder via ⋮⋮ drag handle + ↑/↓ buttons (field errors
+  cleared on move). Today-loss fix: edit mode updates in place (add/edit/
+  delete kept, order kept), create path merges into today's same-day log
+  instead of forking a duplicate, multi-today warning + Delete-today in
+  the Log tab. Detail shows "· per side" / "kg /side". Verified: 72 unit
+  + 3 live integration (skipped without stack) green, `tsc`/`eslint`/
+  `build` clean.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 

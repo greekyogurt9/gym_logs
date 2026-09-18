@@ -24,6 +24,27 @@ export interface WorkoutExercise {
   exerciseName: string;
   /** Zero-based order within the workout. */
   position: number;
+  /**
+   * How the logged kg should be read.
+   * - "total": barbell / machine / cable — both hands share one load.
+   * - "per_side": dumbbell / unilateral — the kg is one side (one hand),
+   *   e.g. two 15 kg dumbbells are logged as 15 kg per side.
+   * Optional on reads so pre-toggle rows (no column yet) load as "total".
+   */
+  weightMode?: WeightMode;
+}
+
+export type WeightMode = "total" | "per_side";
+
+export const WEIGHT_MODES: WeightMode[] = ["total", "per_side"];
+
+export function normalizeWeightMode(v: unknown): WeightMode {
+  return v === "per_side" ? "per_side" : "total";
+}
+
+/** Volume multiplier: per-side work moves both limbs, so it counts twice. */
+export function weightModeMultiplier(mode: WeightMode | undefined): number {
+  return mode === "per_side" ? 2 : 1;
 }
 
 export interface SetEntry {
@@ -54,6 +75,8 @@ export interface NewSetInput {
 
 export interface NewExerciseInput {
   exerciseName: string;
+  /** Defaults to "total" when omitted (old clients / old rows). */
+  weightMode?: WeightMode;
   sets: NewSetInput[];
 }
 

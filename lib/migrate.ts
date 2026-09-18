@@ -1,6 +1,6 @@
 import type { WorkoutRepository } from "./repository";
 import { browserStorage, type KeyValueStorage } from "./local-storage-repository";
-import { LOCAL_STORAGE_KEY_V1 } from "./types";
+import { LOCAL_STORAGE_KEY_V1, normalizeWeightMode } from "./types";
 
 // Local -> cloud migration (Phase 9). Explicit, user-triggered, and
 // paranoid in exactly one way: local data is NEVER deleted until every
@@ -82,6 +82,7 @@ export async function migrateLocalToCloud(
         endedAt: detail.workout.endedAt,
         exercises: detail.exercises.map((e) => ({
           exerciseName: e.exercise.exerciseName,
+          weightMode: normalizeWeightMode(e.exercise.weightMode),
           sets: e.sets.map((s) => ({ weightKg: s.weightKg, reps: s.reps })),
         })),
       });
