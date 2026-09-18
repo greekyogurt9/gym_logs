@@ -180,25 +180,14 @@ exercise library/search, edit-past-workout, sounds/haptics, custom numpad
   exercise inputs suggest per-day catalogs via native datalist (custom names
   still allowed). Theme re-cut to minimal light: paper beige, ink, white
   cards, clay red; chart/manifest/icons/viewport follow. No DB changes.
-- **BUILT (compact + per-side + lock + reorder round):** Log cards are
-  compact — exercise name + set 1 on one grid row, sets 2+ align
-  kg-under-kg / reps-under-reps with one header. Per-exercise weight toggle
-  `Total` (barbell/machine, both hands share one load) vs `Per side`
-  (dumbbell/unilateral, kg is one hand — e.g. two 15s logged as 15);
-  volume ×2 for per-side (both limbs), best stays the entered per-side
-  number. Data: `weightMode` on `WorkoutExercise`/`NewExerciseInput`
-  (optional on reads, defaults total), validator + `cleanDraftExercises`
-  carry it, both repos persist it, third migration
-  `20260918120000_add_weight_mode.sql` (`weight_mode` default total),
-  Supabase reads/writes fall back pre-migration. Lock tick per exercise
-  (✓ locks, ✏️ unlocks; today's loaded rows start locked, Remove/reorder
-  stay enabled). Reorder via ⋮⋮ drag handle + ↑/↓ buttons (field errors
-  cleared on move). Today-loss fix: edit mode updates in place (add/edit/
-  delete kept, order kept), create path merges into today's same-day log
-  instead of forking a duplicate, multi-today warning + Delete-today in
-  the Log tab. Detail shows "· per side" / "kg /side". Verified: 72 unit
-  + 3 live integration (skipped without stack) green, `tsc`/`eslint`/
-  `build` clean.
+- **BUILT (Hevy-standard logger redo):** dropped the name-inline-with-set-1
+  grid (columns could never align) for the industry pattern — title row
+  (`⋮⋮` grip + heading-style name + ✓/🔒 lock + ✕), meta row (Total/Per
+  side pill + `DB/BB` hint + `Last: N kg` ghost tap-to-fill + ↑↓ fallback),
+  then a tight `Set | kg | Reps` table with hairlines, 52px centered
+  tabular numerals, no spinners, one dashed `+ Add set`. Live header stats
+  (ex · sets · kg), sticky bottom actions. Verified: 72 unit green,
+  `tsc`/`eslint`/`build` clean.
 
 ## 10. V3-A — Progress charts + targets ("am I lifting higher?")
 

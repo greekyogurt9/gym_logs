@@ -13,15 +13,17 @@ import {
 import { formatWorkoutDate, isTodayIso } from "@/lib/format";
 import { getWorkoutRepository } from "@/lib/get-repository";
 import type { WeightMode } from "@/lib/types";
-import { normalizeWeightMode } from "@/lib/types";
+import { normalizeWeightMode, weightModeMultiplier } from "@/lib/types";
 import { isValidationError } from "@/lib/validation";
 
-// Log tab: always "today". Compact rows (first set inline with the name,
-// later sets aligned kg-under-kg / reps-under-reps), per-exercise
-// Total-vs-Per-side toggle (barbell vs dumbbell), per-exercise lock tick,
-// and drag/up-down reorder. Saving in edit mode updates today's log in
-// place (append-friendly); saving in create mode merges into today's log
-// when the day matches instead of silently forking a second row.
+// Log tab — Hevy/Strong-standard compact logger.
+// Pattern (industry standard, distilled from Hevy + Strong 2026):
+//   Exercise title on its own header row (never inline with a set),
+//   then a tight SET | KG | REPS table with hairline rows, big centered
+//   tabular numerals, one quiet "+ Add set" row, and a ⋮⋮ handle + ↑↓
+//   fallback for reorder. Previous best ghosts under the header (tap to
+//   fill); Total-vs-Per-side pill lives in the meta row (barbell vs
+//   dumbbell); ✓ locks the card against fat-finger edits.
 
 interface SetDraft {
   weight: string;
@@ -75,6 +77,61 @@ function templateFor(dayId: string): ExerciseDraft[] {
     sets: [{ ...BLANK_SET }],
     locked: false,
   }));
+}
+
+/** Previous-best ghost: "Last: 60 kg". Tap fills empty kg fields. Debounced
+ *  so typing a name doesn't fire a query per keystroke. Decoration only —
+ *  failures stay silent. */
+function PrevHint({
+  name,
+  onFill,
+  disabled,
+}: {
+  name: string;
+  onFill: (kg: number) => void;
+  disabled: boolean;
+}) {
+  const [best, setBest] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    const trimmed = name.trim();
+    const t = setTimeout(() => {
+      if (!active) return;
+      if (trimmed.length < 2) {
+        setBest(null);
+        return;
+      }
+      getWorkoutRepository()
+        .then((repo) => repo.getExerciseHistory(trimmed))
+        .then((h) => {
+          if (!active) return;
+          const bests = h
+            .map((p) => p.bestTopSetKg)
+            .filter((v): v is number => v !== null);
+          setBest(bests.length > 0 ? Math.max(...bests) : null);
+        })
+        .catch(() => {
+          if (active) setBest(null);
+        });
+    }, 600);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [name]);
+
+  if (best === null) return null;
+  return (
+    <button
+      type="button"
+      className="hv-prev"
+      disabled={disabled}
+      title="Tap to fill empty sets with your last best"
+      onClick={() => onFill(best)}
+    >
+      Last: {best} kg
+    </button>
+  );
 }
 
 export default function NewWorkoutPage() {
@@ -187,6 +244,19 @@ export default function NewWorkoutPage() {
     );
   }
 
+  function fillEmptyKg(i: number, kg: number) {
+    setExercises((prev) =>
+      prev.map((ex, idx) =>
+        idx === i
+          ? {
+              ...ex,
+              sets: ex.sets.map((s) => (s.weight.trim() === "" ? { ...s, weight: String(kg) } : s)),
+            }
+          : ex,
+      ),
+    );
+  }
+
   function moveExercise(i: number, dir: -1 | 1) {
     setExercises((prev) => {
       const j = i + dir;
@@ -272,11 +342,8 @@ export default function NewWorkoutPage() {
           exercises: cleaned,
         });
       } else {
-        // Create-path safety net (the reported "earlier log disappeared"
-        // case): if a same-day log with the SAME day title appeared since
-        // mount (second tab, slow load, Repeat draft), APPEND to it instead
-        // of forking a second today-row. Different-day titles still create
-        // their own row (Push morning + Legs evening stays two logs).
+        // Create-path safety net: if a same-day log with the SAME day title
+        // appeared since mount, APPEND to it instead of forking a duplicate.
         const rows = await repo.listWorkouts();
         const sameDay = rows
           .filter((w) => isTodayIso(w.startedAt))
@@ -333,6 +400,21 @@ export default function NewWorkoutPage() {
       )
     : [];
 
+  // Live session stats from filled rows only (Hevy-style header).
+  let liveSets = 0;
+  let liveVolume = 0;
+  for (const ex of exercises) {
+    const mult = weightModeMultiplier(ex.weightMode);
+    for (const s of ex.sets) {
+      const w = Number(s.weight);
+      const r = Number(s.reps);
+      if (s.weight.trim() !== "" && s.reps.trim() !== "" && Number.isFinite(w) && Number.isFinite(r)) {
+        liveSets += 1;
+        liveVolume += w * r * mult;
+      }
+    }
+  }
+
   if (todayState === "checking") {
     return (
       <div>
@@ -345,15 +427,31 @@ export default function NewWorkoutPage() {
   }
 
   return (
-    <div>
+    <div className="log-page">
       <Link className="back" href="/">
         ← History
       </Link>
-      <h1>{editingId ? "Today's workout" : "New workout"}</h1>
-      <p className="muted small">
-        {formatWorkoutDate(new Date().toISOString())} · logged for today automatically
-        {editingId ? " · saving updates today's log (adds, edits, deletes kept)" : ""}
-      </p>
+      <div className="log-head">
+        <div>
+          <h1>{editingId ? "Today's workout" : "New workout"}</h1>
+          <p className="muted small">
+            {formatWorkoutDate(new Date().toISOString())} · today automatically
+          </p>
+        </div>
+        <div className="log-stats" aria-live="polite">
+          <span>
+            <strong>{exercises.length}</strong> ex
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            <strong>{liveSets}</strong> sets
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            <strong>{Math.round(liveVolume).toLocaleString()}</strong> kg
+          </span>
+        </div>
+      </div>
 
       {todayCount > 1 && (
         <div className="error-box" role="note">
@@ -400,17 +498,19 @@ export default function NewWorkoutPage() {
         {exercises.map((ex, i) => (
           <section
             key={ex.key}
-            className={`card ex-card${ex.locked ? " ex-locked" : ""}`}
+            className={`card hv-card${ex.locked ? " is-locked" : ""}${dragIndex === i ? " is-dragging" : ""}`}
             aria-label={`Exercise ${i + 1}${ex.name ? `: ${ex.name}` : ""}`}
             onDragOver={(e) => {
               if (dragIndex !== null) e.preventDefault();
             }}
             onDrop={() => onDropExercise(i)}
           >
-            <div className="ex-toolbar">
+            {/* Title row: handle + name + lock + remove. Name is a heading,
+                not a grid cell — the Hevy/Strong standard. */}
+            <div className="hv-title">
               <span
-                className="drag-handle"
-                title="Drag to reorder (or use ↑ ↓)"
+                className="hv-grip"
+                title="Drag to reorder (or use ↑ ↓ below)"
                 aria-label={`Reorder exercise ${i + 1}`}
                 draggable
                 onDragStart={() => onDragStart(i)}
@@ -418,182 +518,59 @@ export default function NewWorkoutPage() {
               >
                 ⋮⋮
               </span>
-              <span className="ex-pos">
-                {i + 1}
-              </span>
-              <div className="ex-tools">
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label={`Move exercise ${i + 1} up`}
-                  title="Move up"
-                  disabled={i === 0}
-                  onClick={() => moveExercise(i, -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label={`Move exercise ${i + 1} down`}
-                  title="Move down"
-                  disabled={i === exercises.length - 1}
-                  onClick={() => moveExercise(i, 1)}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  className={`icon-btn lock-btn${ex.locked ? " is-locked" : ""}`}
-                  aria-label={
-                    ex.locked
-                      ? `Unlock exercise ${i + 1} to edit`
-                      : `Lock exercise ${i + 1} (tick to protect from edits)`
-                  }
-                  title={ex.locked ? "Unlock to edit" : "✓ Lock — protect from accidental edits"}
-                  aria-pressed={ex.locked}
-                  onClick={() => updateExercise(i, { locked: !ex.locked })}
-                >
-                  {ex.locked ? "✏️" : "✓"}
-                </button>
-                <button
-                  type="button"
-                  className="link-danger"
-                  aria-label={`Remove exercise ${i + 1}`}
-                  onClick={() => {
-                    setExercises((prev) =>
-                      prev.length === 1 ? [blankExercise()] : prev.filter((_, idx) => idx !== i),
-                    );
-                    setFieldErrors({});
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-
-            {/* Compact grid: first set sits inline with the name; later sets
-                align kg-under-kg / reps-under-reps. */}
-            <div className="compact-head" aria-hidden="true">
-              <span>Exercise</span>
-              <span>kg</span>
-              <span>reps</span>
-              <span />
-            </div>
-
-            {ex.sets.map((s, j) => {
-              const wPath = `exercises[${i}].sets[${j}].weightKg`;
-              const rPath = `exercises[${i}].sets[${j}].reps`;
-              const isFirst = j === 0;
-              return (
-                <div key={j} className="compact-row">
-                  <div className="compact-name">
-                    {isFirst ? (
-                      <>
-                        <input
-                          id={`ex-${i}`}
-                          type="text"
-                          value={ex.name}
-                          onChange={(e) => updateExercise(i, { name: e.target.value })}
-                          placeholder={suggestionsForType(title)[0] ?? "Squat"}
-                          maxLength={61}
-                          list={`ex-suggest-${i}`}
-                          autoComplete="off"
-                          disabled={ex.locked}
-                          aria-label={`Exercise ${i + 1} name`}
-                          aria-invalid={!!fieldErrors[`exercises[${i}].exerciseName`]}
-                        />
-                        <datalist id={`ex-suggest-${i}`}>
-                          {suggestionsForType(title).map((opt) => (
-                            <option key={opt} value={opt} />
-                          ))}
-                        </datalist>
-                      </>
-                    ) : (
-                      <span className="set-num" aria-hidden="true">
-                        {j + 1}
-                      </span>
-                    )}
-                  </div>
-                  <div className="compact-field">
-                    <input
-                      id={isFirst ? `w-${i}-${j}` : `w-${i}-${j}`}
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.5"
-                      value={s.weight}
-                      onChange={(e) => updateSet(i, j, { weight: e.target.value })}
-                      aria-label={`Exercise ${i + 1} set ${j + 1} weight kg`}
-                      aria-invalid={!!fieldErrors[wPath]}
-                      disabled={ex.locked}
-                    />
-                  </div>
-                  <div className="compact-field">
-                    <input
-                      id={`r-${i}-${j}`}
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      step="1"
-                      value={s.reps}
-                      onChange={(e) => updateSet(i, j, { reps: e.target.value })}
-                      aria-label={`Exercise ${i + 1} set ${j + 1} reps`}
-                      aria-invalid={!!fieldErrors[rPath]}
-                      disabled={ex.locked}
-                    />
-                  </div>
-                  <div className="compact-x">
-                    {ex.sets.length > 1 ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Remove set ${j + 1} from exercise ${i + 1}`}
-                        disabled={ex.locked}
-                        onClick={() =>
-                          setExercises((prev) =>
-                            prev.map((ex2, idx) =>
-                              idx === i
-                                ? { ...ex2, sets: ex2.sets.filter((_, k) => k !== j) }
-                                : ex2,
-                            ),
-                          )
-                        }
-                      >
-                        ✕
-                      </button>
-                    ) : (
-                      <span className="set-num" aria-hidden="true">
-                        1
-                      </span>
-                    )}
-                  </div>
-                  {(fieldErrors[wPath] ||
-                    fieldErrors[rPath] ||
-                    (isFirst && fieldErrors[`exercises[${i}].exerciseName`])) && (
-                    <div className="compact-errors">
-                      {isFirst && fieldErrors[`exercises[${i}].exerciseName`] && (
-                        <p className="field-error">
-                          {fieldErrors[`exercises[${i}].exerciseName`]}
-                        </p>
-                      )}
-                      {fieldErrors[wPath] && <p className="field-error">{fieldErrors[wPath]}</p>}
-                      {fieldErrors[rPath] && <p className="field-error">{fieldErrors[rPath]}</p>}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            <div className="ex-foot">
-              <div
-                className="mini-segment"
-                role="group"
-                aria-label={`Weight type for exercise ${i + 1}`}
+              <input
+                className="hv-name"
+                type="text"
+                value={ex.name}
+                onChange={(e) => updateExercise(i, { name: e.target.value })}
+                placeholder={suggestionsForType(title)[i] ?? suggestionsForType(title)[0] ?? "Exercise name"}
+                maxLength={61}
+                list={`ex-suggest-${i}`}
+                autoComplete="off"
+                disabled={ex.locked}
+                aria-label={`Exercise ${i + 1} name`}
+                aria-invalid={!!fieldErrors[`exercises[${i}].exerciseName`]}
+              />
+              <datalist id={`ex-suggest-${i}`}>
+                {suggestionsForType(title).map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+              <button
+                type="button"
+                className={`hv-lock${ex.locked ? " on" : ""}`}
+                aria-label={ex.locked ? `Unlock exercise ${i + 1}` : `Lock exercise ${i + 1}`}
+                title={ex.locked ? "Unlock to edit" : "✓ Lock — protect from accidental edits"}
+                aria-pressed={ex.locked}
+                onClick={() => updateExercise(i, { locked: !ex.locked })}
               >
+                {ex.locked ? "🔒" : "✓"}
+              </button>
+              <button
+                type="button"
+                className="hv-del-ex"
+                aria-label={`Remove exercise ${i + 1}`}
+                title="Remove exercise"
+                onClick={() => {
+                  setExercises((prev) =>
+                    prev.length === 1 ? [blankExercise()] : prev.filter((_, idx) => idx !== i),
+                  );
+                  setFieldErrors({});
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {fieldErrors[`exercises[${i}].exerciseName`] && (
+              <p className="field-error hv-err">{fieldErrors[`exercises[${i}].exerciseName`]}</p>
+            )}
+
+            {/* Meta row: weight type + previous best + reorder fallback. */}
+            <div className="hv-meta">
+              <div className="hv-pill" role="group" aria-label={`Weight type for exercise ${i + 1}`}>
                 <button
                   type="button"
-                  className={ex.weightMode === "total" ? "mini-on" : ""}
+                  className={ex.weightMode === "total" ? "on" : ""}
                   aria-pressed={ex.weightMode === "total"}
                   disabled={ex.locked}
                   title="Barbell / machine — both hands share one load"
@@ -603,29 +580,119 @@ export default function NewWorkoutPage() {
                 </button>
                 <button
                   type="button"
-                  className={ex.weightMode === "per_side" ? "mini-on" : ""}
+                  className={ex.weightMode === "per_side" ? "on" : ""}
                   aria-pressed={ex.weightMode === "per_side"}
                   disabled={ex.locked}
-                  title="Dumbbell / unilateral — kg is one side (one hand)"
+                  title="Dumbbell — kg is one hand"
                   onClick={() => updateExercise(i, { weightMode: "per_side" })}
                 >
                   Per side
                 </button>
               </div>
-              <span className="muted small" title="How the kg is read">
-                {ex.weightMode === "per_side"
-                  ? "DB · kg per hand (volume ×2)"
-                  : "BB · kg total"}
+              <span className="muted small hv-mode-hint">
+                {ex.weightMode === "per_side" ? "DB · each hand" : "BB · combined"}
               </span>
-              <button
-                type="button"
-                className="button-secondary small"
-                disabled={ex.locked}
-                onClick={() => updateExercise(i, { sets: [...ex.sets, { ...BLANK_SET }] })}
-              >
-                + Set
-              </button>
+              <PrevHint name={ex.name} disabled={ex.locked} onFill={(kg) => fillEmptyKg(i, kg)} />
+              <span className="hv-move">
+                <button
+                  type="button"
+                  aria-label={`Move exercise ${i + 1} up`}
+                  title="Move up"
+                  disabled={i === 0}
+                  onClick={() => moveExercise(i, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move exercise ${i + 1} down`}
+                  title="Move down"
+                  disabled={i === exercises.length - 1}
+                  onClick={() => moveExercise(i, 1)}
+                >
+                  ↓
+                </button>
+              </span>
             </div>
+
+            {/* Set table: the compact standard. Columns align down the card. */}
+            <div className="hv-cols" aria-hidden="true">
+              <span>Set</span>
+              <span>kg{ex.weightMode === "per_side" ? " /side" : ""}</span>
+              <span>Reps</span>
+              <span />
+            </div>
+
+            <ol className="hv-sets">
+              {ex.sets.map((s, j) => {
+                const wPath = `exercises[${i}].sets[${j}].weightKg`;
+                const rPath = `exercises[${i}].sets[${j}].reps`;
+                const invalid = fieldErrors[wPath] ?? fieldErrors[rPath];
+                return (
+                  <li key={j} className="hv-row">
+                    <span className="hv-setnum">{j + 1}</span>
+                    <input
+                      className="hv-num"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.5"
+                      value={s.weight}
+                      onChange={(e) => updateSet(i, j, { weight: e.target.value })}
+                      aria-label={`Exercise ${i + 1} set ${j + 1} weight`}
+                      aria-invalid={!!fieldErrors[wPath]}
+                      disabled={ex.locked}
+                      placeholder="–"
+                    />
+                    <input
+                      className="hv-num"
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      step="1"
+                      value={s.reps}
+                      onChange={(e) => updateSet(i, j, { reps: e.target.value })}
+                      aria-label={`Exercise ${i + 1} set ${j + 1} reps`}
+                      aria-invalid={!!fieldErrors[rPath]}
+                      disabled={ex.locked}
+                      placeholder="–"
+                    />
+                    <button
+                      type="button"
+                      className="hv-del-set"
+                      aria-label={`Remove set ${j + 1} from exercise ${i + 1}`}
+                      title="Remove set"
+                      disabled={ex.locked || ex.sets.length === 1}
+                      onClick={() =>
+                        setExercises((prev) =>
+                          prev.map((ex2, idx) =>
+                            idx === i
+                              ? { ...ex2, sets: ex2.sets.filter((_, k) => k !== j) }
+                              : ex2,
+                          ),
+                        )
+                      }
+                    >
+                      ✕
+                    </button>
+                    {(fieldErrors[wPath] || fieldErrors[rPath]) && (
+                      <span className="hv-row-err" role="alert">
+                        {invalid}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+
+            <button
+              type="button"
+              className="hv-add"
+              disabled={ex.locked}
+              onClick={() => updateExercise(i, { sets: [...ex.sets, { ...BLANK_SET }] })}
+            >
+              + Add set
+            </button>
           </section>
         ))}
 
@@ -659,7 +726,7 @@ export default function NewWorkoutPage() {
           </div>
         )}
 
-        <div className="actions">
+        <div className="actions actions-sticky">
           <button
             type="button"
             className="button-secondary"
